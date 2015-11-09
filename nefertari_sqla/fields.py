@@ -1,4 +1,4 @@
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import backref, relationship
 from sqlalchemy.schema import Column, ForeignKey
 from sqlalchemy_utils.types.json import JSONType
 
@@ -26,40 +26,13 @@ from .types import (
 )
 
 
-class ProcessableMixin(object):
-    """ Mixin that allows running callables on a value that
-    is being set on a field.
-    """
-    def __init__(self, *args, **kwargs):
-        """ Pop before/after validation processors
-
-        :before_validation: Processors that are run before session.flush()
-        :after_validation: Processors that are run after session.flush()
-            but before session.commit()
-        """
-        self._kwargs_backup = kwargs.copy()
-        self.before_validation = kwargs.pop('before_validation', ())
-        self.after_validation = kwargs.pop('after_validation', ())
-        super(ProcessableMixin, self).__init__(*args, **kwargs)
-
-    def apply_processors(self, instance, new_value,
-                         before=False, after=False):
-        processors = []
-        if before:
-            processors += list(self.before_validation)
-        if after:
-            processors += list(self.after_validation)
-        for proc in processors:
-            new_value = proc(instance=instance, new_value=new_value)
-        return new_value
-
-
 class BaseField(Column):
     """ Base plain column that otherwise would be created as
     sqlalchemy.Column(sqlalchemy.Type())
 
     Attributes:
-        _sqla_type_cls: SQLAlchemy type class used to instantiate the column type.
+        _sqla_type_cls: SQLAlchemy type class used to instantiate the column
+            type.
         _type_unchanged_kwargs: sequence of strings that represent arguments
             received by `_sqla_type_cls`, the names of which have not been
             changed. Values of field init arguments with these names will
@@ -93,6 +66,8 @@ class BaseField(Column):
         # Column init when defining a schema
         else:
             col_kw['type_'] = self._sqla_type_cls(*type_args, **type_kw)
+            if 'type_' not in kwargs:
+                self._init_kwargs = self._kwargs_backup.copy()
         super(BaseField, self).__init__(**col_kw)
 
     def __setattr__(self, key, value):
@@ -158,15 +133,17 @@ class BaseField(Column):
             key: val for key, val in self._kwargs_backup.items()
             if not kwargs.get(key)}
         kwargs.update(additional_kw)
-        return self.__class__(*args, **kwargs)
+        obj = self.__class__(*args, **kwargs)
+        obj._init_kwargs = self._init_kwargs
+        return obj
 
 
-class BigIntegerField(ProcessableMixin, BaseField):
+class BigIntegerField(BaseField):
     _sqla_type_cls = LimitedBigInteger
     _type_unchanged_kwargs = ('min_value', 'max_value')
 
 
-class BooleanField(ProcessableMixin, BaseField):
+class BooleanField(BaseField):
     _sqla_type_cls = Boolean
     _type_unchanged_kwargs = ('create_constraint')
 
@@ -183,31 +160,31 @@ class BooleanField(ProcessableMixin, BaseField):
         return type_args, type_kw, cleaned_kw
 
 
-class DateField(ProcessableMixin, BaseField):
+class DateField(BaseField):
     _sqla_type_cls = Date
     _type_unchanged_kwargs = ()
 
 
-class DateTimeField(ProcessableMixin, BaseField):
+class DateTimeField(BaseField):
     _sqla_type_cls = DateTime
     _type_unchanged_kwargs = ('timezone',)
 
 
-class ChoiceField(ProcessableMixin, BaseField):
+class ChoiceField(BaseField):
     _sqla_type_cls = Choice
     _type_unchanged_kwargs = (
         'collation', 'convert_unicode', 'unicode_error',
         '_warn_on_bytestring', 'choices')
 
 
-class FloatField(ProcessableMixin, BaseField):
+class FloatField(BaseField):
     _sqla_type_cls = LimitedFloat
     _type_unchanged_kwargs = (
         'precision', 'asdecimal', 'decimal_return_scale',
         'min_value', 'max_value')
 
 
-class IntegerField(ProcessableMixin, BaseField):
+class IntegerField(BaseField):
     _sqla_type_cls = LimitedInteger
     _type_unchanged_kwargs = ('min_value', 'max_value')
 
@@ -219,13 +196,13 @@ class IdField(IntegerField):
     pass
 
 
-class IntervalField(ProcessableMixin, BaseField):
+class IntervalField(BaseField):
     _sqla_type_cls = Interval
     _type_unchanged_kwargs = (
         'native', 'second_precision', 'day_precision')
 
 
-class BinaryField(ProcessableMixin, BaseField):
+class BinaryField(BaseField):
     _sqla_type_cls = LargeBinary
     _type_unchanged_kwargs = ('length',)
 
@@ -234,25 +211,25 @@ class BinaryField(ProcessableMixin, BaseField):
 #     _sqla_type_cls = MatchType
 
 
-class DecimalField(ProcessableMixin, BaseField):
+class DecimalField(BaseField):
     _sqla_type_cls = LimitedNumeric
     _type_unchanged_kwargs = (
         'precision', 'scale', 'decimal_return_scale', 'asdecimal',
         'min_value', 'max_value')
 
 
-class PickleField(ProcessableMixin, BaseField):
+class PickleField(BaseField):
     _sqla_type_cls = PickleType
     _type_unchanged_kwargs = (
         'protocol', 'pickler', 'comparator')
 
 
-class SmallIntegerField(ProcessableMixin, BaseField):
+class SmallIntegerField(BaseField):
     _sqla_type_cls = LimitedSmallInteger
     _type_unchanged_kwargs = ('min_value', 'max_value')
 
 
-class StringField(ProcessableMixin, BaseField):
+class StringField(BaseField):
     _sqla_type_cls = LimitedString
     _type_unchanged_kwargs = (
         'collation', 'convert_unicode', 'unicode_error',
@@ -361,6 +338,9 @@ class BaseSchemaItemField(BaseField):
         * If `args` are provided, that means column proxy is being created.
           In this case Type does not need to be created.
         """
+        if not hasattr(self, '_kwargs_backup'):
+            self._kwargs_backup = kwargs.copy()
+
         type_args, type_kw, cleaned_kw = self.process_type_args(kwargs)
         if not args:
             schema_item, cleaned_kw = self._generate_schema_item(cleaned_kw)
@@ -371,6 +351,8 @@ class BaseSchemaItemField(BaseField):
         # Column init when defining a schema
         else:
             column_kw['type_'] = self._sqla_type_cls(*type_args, **type_kw)
+            if 'type_' not in kwargs:
+                self._init_kwargs = self._kwargs_backup.copy()
         column_args = (schema_item,)
         return Column.__init__(self, *column_args, **column_kw)
 
@@ -476,12 +458,12 @@ relationship_kwargs = {
     'innerjoin', 'distinct_target_key', 'doc',
     'active_history', 'cascade_backrefs', 'load_on_pending',
     'strategy_class', '_local_remote_pairs', 'query_class', 'info',
-    'document', 'name'
+    'document', 'name',
 }
 
 
 def Relationship(**kwargs):
-    """ Thin wrapper around sqlalchemy.orm.relationship.
+    """ Thin wrapper around relationship.
 
     The goal of this wrapper is to allow passing both relationship and
     backref arguments to a single function.
@@ -499,7 +481,9 @@ def Relationship(**kwargs):
     are loaded, using a separate SELECT statement, or identity map fetch for
     simple many-to-one references.
     """
+    _init_kwargs = kwargs.copy()
     backref_pre = 'backref_'
+    backref_pre_len = len(backref_pre)
     if 'help_text' in kwargs:
         kwargs['doc'] = kwargs.pop('help_text', None)
     if (backref_pre + 'help_text') in kwargs:
@@ -508,21 +492,26 @@ def Relationship(**kwargs):
 
     kwargs = {k: v for k, v in kwargs.items()
               if k in relationship_kwargs
-              or k[len(backref_pre):] in relationship_kwargs}
+              or k[backref_pre_len:] in relationship_kwargs}
     rel_kw, backref_kw = {}, {}
 
     for key, val in kwargs.items():
         if key.startswith(backref_pre):
-            key = key[len(backref_pre):]
+            key = key[backref_pre_len:]
             backref_kw[key] = val
         else:
             rel_kw[key] = val
+
     rel_document = rel_kw.pop('document')
     if 'uselist' in rel_kw and not rel_kw['uselist']:
         rel_kw['lazy'] = 'immediate'
+
     if backref_kw:
         if not backref_kw.get('uselist'):
             backref_kw['lazy'] = 'immediate'
         backref_name = backref_kw.pop('name')
         rel_kw['backref'] = backref(backref_name, **backref_kw)
-    return relationship(rel_document, **rel_kw)
+
+    rel_field = relationship(rel_document, **rel_kw)
+    rel_field._init_kwargs = _init_kwargs
+    return rel_field

@@ -1,7 +1,5 @@
 import logging
 
-from sqlalchemy.orm.properties import RelationshipProperty as RelationshipField
-
 from zope.dottedname.resolve import resolve
 
 from .documents import (
@@ -37,6 +35,7 @@ from .fields import (
     ListField,
 )
 
+
 log = logging.getLogger(__name__)
 
 
@@ -55,7 +54,7 @@ def setup_database(config):
     BaseObject.metadata.bind = engine
     if not database_exists(engine.url):
         log.info(
-            'Database does not exit. Creating database at %s' % engine.url)
+            'Database does not exist. Creating database at %s' % engine.url)
         create_database(engine.url)
 
     # Create HSTORE extension if database is postgresql

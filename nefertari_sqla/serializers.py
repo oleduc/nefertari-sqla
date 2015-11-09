@@ -24,16 +24,19 @@ class JSONEncoderMixin(object):
 
 
 class JSONEncoder(JSONEncoderMixin, _JSONEncoder):
+    """ JSON encoder class to be used in views to encode response. """
     def default(self, obj):
         if hasattr(obj, 'to_dict'):
             # If it got to this point, it means its a nested object.
             # Outter objects would have been handled with DataProxy.
-            return obj.to_dict(__nested=True)
+            return obj.to_dict()
         return super(JSONEncoder, self).default(obj)
 
 
 class ESJSONSerializer(JSONEncoderMixin,
                        elasticsearch.serializer.JSONSerializer):
+    """ JSON encoder class used to serialize data before indexing
+    to ES. """
     def default(self, obj):
         try:
             return super(ESJSONSerializer, self).default(obj)
