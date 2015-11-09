@@ -1,6 +1,19 @@
 Changelog
 =========
 
+* :release:`0.4.0 <2015-10-07>`
+* :feature:`-` Nested relationships are now indexed in bulk in ElasticSearch
+* :feature:`-` Added '_nesting_depth' property in models to control the level of nesting, default is 1
+
+* :release:`0.3.3 <2015-09-02>`
+* :bug:`-` Fixed a bug when using reserved query params with GET tunneling
+* :bug:`-` Fixed ES double indexation bug
+
+* :release:`0.3.2 <2015-08-19>`
+* :bug:`-` Fixed a bug whereby objects could not be deleted from within processors
+* :bug:`-` Fixed a bug with _update_many() and _delete_many() not working with querysets returned by get_collection()
+* :bug:`-` Fixed a bug with BaseMixin.filter_objects() not correctly applying additional filters passed to it
+
 * :release:`0.3.1 <2015-07-07>`
 * :bug:`-` Fixed bug with Elasticsearch re-indexing of nested relationships
 * :bug:`-` Removed 'updated_at' field from engine
