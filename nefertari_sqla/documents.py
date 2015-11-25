@@ -147,7 +147,7 @@ class BaseMixin(object):
 
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
-                column_type = {'type': 'nested'}
+                column_type = {'type': 'nested', 'include_in_parent': True}
                 submapping = column.mapper.class_.get_es_mapping(
                     _depth=_depth-1)
                 column_type.update(list(submapping.values())[0])
