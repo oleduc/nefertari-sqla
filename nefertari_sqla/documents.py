@@ -145,6 +145,12 @@ class BaseMixin(object):
                 continue
             properties[name] = types_map[column_type]
 
+            if hasattr(column, "_index_raw") and getattr(column, "_index_raw"):
+                properties[name] = properties[name].copy()
+                properties[name]["fields"] = {
+                    "raw": {"type": "string", "index": "not_analyzed"}
+                  }
+
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
