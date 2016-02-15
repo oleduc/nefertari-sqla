@@ -12,6 +12,7 @@ from sqlalchemy.orm.query import Query
 from sqlalchemy.orm.properties import RelationshipProperty
 from pyramid_sqlalchemy import Session, BaseObject
 from sqlalchemy_utils.types.json import JSONType
+from sqlalchemy.inspection import inspect
 
 from nefertari.json_httpexceptions import (
     JHTTPBadRequest, JHTTPNotFound, JHTTPConflict)
@@ -819,7 +820,11 @@ class BaseMixin(object):
 
             if nested_only:
                 backref = prop.back_populates
+                pk_name = value[0].pk_field()
+
                 if backref and backref not in model_cls._nested_relationships:
+                    continue
+                elif backref and getattr(value[0], pk_name) is None:
                     continue
 
             yield (model_cls, value)
