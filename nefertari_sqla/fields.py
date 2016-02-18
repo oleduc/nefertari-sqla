@@ -234,17 +234,22 @@ class StringField(BaseField):
     _type_unchanged_kwargs = (
         'collation', 'convert_unicode', 'unicode_error',
         '_warn_on_bytestring', 'min_length', 'max_length')
+    _index_raw = False
 
     def process_type_args(self, kwargs):
         """
         Changed:
             max_length -> length
         """
+        if 'index_raw' in kwargs:
+            self._index_raw = kwargs.get('index_raw')
+
         type_args, type_kw, cleaned_kw = super(
             StringField, self).process_type_args(kwargs)
         type_kw.update({
             'length': type_kw.get('max_length'),
         })
+
         return type_args, type_kw, cleaned_kw
 
 
