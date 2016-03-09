@@ -145,6 +145,12 @@ class BaseMixin(object):
                 continue
             properties[name] = types_map[column_type]
 
+            if hasattr(column, "_index_raw") and getattr(column, "_index_raw"):
+                properties[name] = properties[name].copy()
+                properties[name]["fields"] = {
+                    "raw": {"type": "string", "index": "not_analyzed"}
+                  }
+
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
@@ -633,9 +639,9 @@ class BaseMixin(object):
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
             upd_queryset._request = request
-            updated_item = upd_queryset.all()
             upd_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
+            updated_item = upd_queryset.all()
             return {"count": upd_count, "items": updated_item}
         items_count = len(items)
         for item in items:
