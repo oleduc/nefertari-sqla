@@ -639,9 +639,9 @@ class BaseMixin(object):
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
             upd_queryset._request = request
+            updated_item = upd_queryset.all()
             upd_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
-            updated_item = upd_queryset.all()
             return {"count": upd_count, "items": updated_item}
         items_count = len(items)
         for item in items:
