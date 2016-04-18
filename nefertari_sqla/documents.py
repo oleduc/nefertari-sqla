@@ -146,11 +146,14 @@ class BaseMixin(object):
                 continue
             properties[name] = types_map[column_type]
 
-            if hasattr(column, "_index_raw") and getattr(column, "_index_raw"):
+            if hasattr(column, "_es_multi_field") and getattr(column, "_es_multi_field"):
+                multi_fields = getattr(column, "_es_multi_field")
                 properties[name] = properties[name].copy()
-                properties[name]["fields"] = {
-                    "raw": {"type": "string", "index": "not_analyzed"}
-                  }
+                properties[name]["fields"] = {}
+
+                for multi_field_name in multi_fields:
+                    properties[name]["fields"][multi_field_name] = multi_fields[multi_field_name].copy()
+                    properties[name]["fields"][multi_field_name].update(types_map[column_type])
 
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
