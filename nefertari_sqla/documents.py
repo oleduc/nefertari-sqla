@@ -804,7 +804,7 @@ class BaseMixin(object):
             update_list(params)
 
     def get_related_documents(self, nested_only=False):
-        """ Return pairs of (Model, istances) of relationship fields.
+        """ Return pairs of (Model, instances) of relationship fields.
 
         Pair contains of two elements:
           :Model: Model class object(s) contained in field.
@@ -834,6 +834,52 @@ class BaseMixin(object):
                 if backref and backref not in model_cls._nested_relationships:
                     continue
                 elif backref and getattr(value[0], pk_name) is None:
+                    continue
+
+            yield (model_cls, value)
+
+    def get_parent_documents(self, nested_only=False):
+        """ Return pairs of (Model, instances) of parents with backref relationship fields.
+
+        Pair contains of two elements:
+          :Model: Model class object(s) contained in field.
+          :instances: Model class instance(s) contained in field
+
+        :param nested_only: Boolean, defaults to False. When True, return
+            results only contain data for models on which current model
+            and field are nested.
+        """
+        iter_props = class_mapper(self.__class__).iterate_properties
+        backref_props = [p for p in iter_props
+                         if isinstance(p, properties.RelationshipProperty)]
+
+        for prop in backref_props:
+            value = getattr(self, prop.key)
+            # Backref don't have backrefs
+            if prop.backref is not None:
+                continue
+
+            # Backref are not lists
+            if prop.uselist:
+                continue
+
+            # In our context, Backref don't have _init_kwargs
+            if hasattr(prop, "_init_kwargs"):
+                continue
+
+            # Do not index empty values
+            if not value:
+                continue
+
+            model_cls = value.__class__
+
+            if nested_only:
+                backref = prop.back_populates
+                pk_name = value.pk_field()
+
+                if backref and backref not in model_cls._nested_relationships:
+                    continue
+                elif backref and getattr(value, pk_name) is None:
                     continue
 
             yield (model_cls, value)

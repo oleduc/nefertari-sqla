@@ -33,6 +33,10 @@ def on_after_update(mapper, connection, target):
     request = getattr(target, '_request', None)
     from .documents import BaseDocument
 
+    # Reindex parents with nested relationships to target
+    for model_cls, document in target.get_parent_documents(nested_only=True):
+        index_object(document, with_refs=False, request=request)
+
     # Reindex old one-to-one related object
     committed_state = attributes.instance_state(target).committed_state
     for field, value in committed_state.items():
