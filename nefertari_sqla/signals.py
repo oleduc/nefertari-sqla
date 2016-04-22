@@ -1,4 +1,5 @@
 import logging
+import traceback
 
 from sqlalchemy import event
 from sqlalchemy.ext.declarative import DeclarativeMeta
@@ -13,7 +14,8 @@ log = logging.getLogger(__name__)
 def index_object(obj, with_refs=True, **kwargs):
     from nefertari.elasticsearch import ES
     es = ES(obj.__class__.__name__)
-    es.index(obj.to_dict(), **kwargs)
+    dict_obj = obj.to_dict()
+    es.index(dict_obj, **kwargs)
     if with_refs:
         es.index_relations(obj, **kwargs)
 
@@ -32,6 +34,15 @@ def on_after_insert(mapper, connection, target):
 def on_after_update(mapper, connection, target):
     request = getattr(target, '_request', None)
     from .documents import BaseDocument
+
+    for cls, parent in target.get_parent_documents(nested_only=True):
+        obj_dict = to_dicts(parent)
+        try:
+            cls(cls.__name__).index(obj_dict, with_refs=False, request=request)
+        except Exception as e:
+            tb = traceback.format_exc()
+            wtf = 2
+        wtf = 1
 
     # Reindex old one-to-one related object
     committed_state = attributes.instance_state(target).committed_state

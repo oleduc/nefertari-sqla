@@ -835,6 +835,40 @@ class BaseMixin(object):
 
             yield (model_cls, value)
 
+    def get_parent_documents(self, nested_only=False):
+        iter_props = class_mapper(self.__class__).iterate_properties
+        backref_props = [p for p in iter_props
+                         if isinstance(p, properties.RelationshipProperty)]
+
+        for prop in backref_props:
+            value = getattr(self, prop.key)
+
+            # Backref don't have _init_kwargs
+            if hasattr(prop, "_init_kwargs"):
+                continue
+
+            # Backrefs don't have backrefs
+            if prop.backref is not None:
+                continue
+
+            # Backrefs only have one related item
+            if prop.uselist:
+                continue
+
+            # Do not index empty values
+            if not value:
+                continue
+
+            model_cls = value.__class__
+
+            if nested_only:
+                backref = prop.back_populates
+
+                if backref and backref not in model_cls._nested_relationships:
+                    continue
+
+            yield (model_cls, value)
+
     def _is_modified(self):
         """ Determine if instance is modified.
 
