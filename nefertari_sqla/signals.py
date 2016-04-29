@@ -35,15 +35,6 @@ def on_after_update(mapper, connection, target):
     request = getattr(target, '_request', None)
     from .documents import BaseDocument
 
-    for cls, parent in target.get_parent_documents(nested_only=True):
-        obj_dict = to_dicts(parent)
-        try:
-            cls(cls.__name__).index(obj_dict, with_refs=False, request=request)
-        except Exception as e:
-            tb = traceback.format_exc()
-            wtf = 2
-        wtf = 1
-
     # Reindex old one-to-one related object
     committed_state = attributes.instance_state(target).committed_state
     for field, value in committed_state.items():
@@ -59,6 +50,12 @@ def on_after_update(mapper, connection, target):
     columns = [c.name for c in class_mapper(target.__class__).columns]
     object_session(target).expire(target, attribute_names=columns)
     index_object(target, request=request, nested_only=True, with_refs=False)
+
+    # Reindex the item's parents. This must be done after the child has been processes
+    for cls, parent in target.get_parent_documents(nested_only=True):
+        columns = [c.name for c in class_mapper(parent.__class__).columns]
+        object_session(parent).expire(parent, attribute_names=columns)
+        index_object(parent, with_refs=False, request=request)
 
 
 def on_after_delete(mapper, connection, target):
