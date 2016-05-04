@@ -13,7 +13,7 @@ log = logging.getLogger(__name__)
 def index_object(obj, with_refs=True, **kwargs):
     from nefertari.elasticsearch import ES
     es = ES(obj.__class__.__name__)
-    es.index(obj.to_dict(), **kwargs)
+    es.index(obj, **kwargs)
     if with_refs:
         es.index_relations(obj, **kwargs)
 
@@ -73,8 +73,7 @@ def on_bulk_update(update_context):
 
     from nefertari.elasticsearch import ES
     es = ES(source=model_cls.__name__)
-    documents = to_dicts(objects)
-    es.index(documents, request=request)
+    es.index(objects, request=request)
 
     # Reindex relationships
     es.bulk_index_relations(objects, request=request, nested_only=True)
@@ -109,4 +108,4 @@ class ESMetaclass(DeclarativeMeta):
     def __init__(self, name, bases, attrs):
         self._index_enabled = True
         setup_es_signals_for(self)
-        return super(ESMetaclass, self).__init__(name, bases, attrs)
+        super(ESMetaclass, self).__init__(name, bases, attrs)
