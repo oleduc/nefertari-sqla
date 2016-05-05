@@ -716,8 +716,7 @@ class BaseMixin(object):
 
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
-        indexable = kwargs.get('indexable')
-        presentable = kwargs.get('presentable')
+        indexable = kwargs.get('indexable', False)
 
         if _depth is None:
             _depth = self._nesting_depth
@@ -735,7 +734,11 @@ class BaseMixin(object):
             if indexable is True and is_nested is True and not depth_reached:
                 _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
 
-            _data[field] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=(presentable is True))
+            _data[field] = BaseMixin.get_encoded_field_value(
+                value,
+                _depth,
+                nest_objects=(is_nested and depth_reached is False and indexable is False)
+            )
 
         _data['_type'] = self._type
         _data['_pk'] = str(getattr(self, self.pk_field()))
@@ -745,10 +748,6 @@ class BaseMixin(object):
     def to_indexable_dict(self, **kwargs):
         kwargs["indexable"] = True
         return self.to_dict(indexable=True)
-
-    def to_presentable_dict(self, **kwargs):
-        kwargs["presentable"] = True
-        return self.to_dict(**kwargs)
 
     def update_iterables(self, params, attr, unique=False,
                          value_type=None, save=True,

@@ -121,7 +121,8 @@ class TestBaseMixin(object):
                     '_pk': {'type': 'string'},
                     'child_id': {'type': 'string'},
                     'name': {'type': 'string'},
-                    'myself': {
+                    'myself': {'type': 'string'},
+                    'myself_nested': {
                         'type': 'nested',
                         'include_in_parent': True,
                         'properties': myself_props
