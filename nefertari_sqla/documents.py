@@ -124,12 +124,16 @@ class BaseMixin(object):
     def get_es_mapping(cls, _depth=None, types_map=None):
         """ Generate ES mapping from model schema. """
         from nefertari.elasticsearch import ES
+
         if types_map is None:
             types_map = TYPES_MAP
+
         if _depth is None:
             _depth = cls._nesting_depth
+
         depth_reached = _depth <= 0
 
+        nested_substitutions = []
         properties = {}
         mapping = {
             ES.src2type(cls.__name__): {
@@ -161,8 +165,11 @@ class BaseMixin(object):
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
-                submapping = column.mapper.class_.get_es_mapping(
+                nested_substitutions.append(name)
+
+                submapping, sub_substitutions = column.mapper.class_.get_es_mapping(
                     _depth=_depth - 1)
+
                 column_type.update(list(submapping.values())[0])
                 properties[name + "_nested"] = column_type
 
@@ -171,7 +178,8 @@ class BaseMixin(object):
             properties[name] = column_type
 
         properties['_pk'] = {'type': 'string'}
-        return mapping
+
+        return mapping, nested_substitutions
 
     @classmethod
     def autogenerate_for(cls, model, set_to):
