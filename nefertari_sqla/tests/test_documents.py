@@ -98,7 +98,7 @@ class TestBaseMixin(object):
                 ref_column_type=fields.StringField)
         memory_db()
 
-        my_model_mapping = MyModel.get_es_mapping()
+        my_model_mapping, substitutions = MyModel.get_es_mapping()
 
         assert my_model_mapping == {
             'MyModel': {
@@ -112,7 +112,7 @@ class TestBaseMixin(object):
                 }
             }
         }
-        my_model2_mapping = MyModel2.get_es_mapping()
+        my_model2_mapping, substitutions = MyModel2.get_es_mapping()
         myself_props = my_model_mapping['MyModel']['properties']
 
         assert my_model2_mapping == {
