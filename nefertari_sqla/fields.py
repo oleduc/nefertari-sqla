@@ -78,6 +78,7 @@ class BaseField(Column):
         """
         if value is not None and key == 'name':
             self.type._column_name = value
+
         return super(BaseField, self).__setattr__(key, value)
 
     def process_type_args(self, kwargs):

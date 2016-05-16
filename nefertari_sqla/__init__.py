@@ -4,7 +4,7 @@ from zope.dottedname.resolve import resolve
 
 from .documents import (
     BaseDocument, ESBaseDocument, BaseMixin,
-    get_document_cls, get_document_classes)
+    get_document_cls, get_document_classes, is_object_document)
 from .serializers import JSONEncoder, ESJSONSerializer
 from .signals import ESMetaclass
 from .utils import (
@@ -63,6 +63,7 @@ __all__ = [
     'BaseMixin',
     'get_document_cls',
     'get_document_classes',
+    'is_object_document',
     'relationship_fields',
     'is_relationship_field',
     'get_relationship_cls',
