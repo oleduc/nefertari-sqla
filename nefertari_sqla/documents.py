@@ -755,7 +755,7 @@ class BaseMixin(object):
 
     def to_indexable_dict(self, **kwargs):
         kwargs["indexable"] = True
-        return self.to_dict(indexable=True)
+        return self.to_dict(**kwargs)
 
     def update_iterables(self, params, attr, unique=False,
                          value_type=None, save=True,
