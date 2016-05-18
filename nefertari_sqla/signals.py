@@ -4,6 +4,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import object_session, class_mapper, attributes
 from pyramid_sqlalchemy import Session
+from nefertari.elasticsearch import ES
 
 from nefertari.utils import to_dicts
 
@@ -11,7 +12,6 @@ log = logging.getLogger(__name__)
 
 
 def index_object(obj, with_refs=True, **kwargs):
-    from nefertari.elasticsearch import ES
     es = ES(obj.__class__.__name__)
     es.index(obj, **kwargs)
     if with_refs:
@@ -48,6 +48,12 @@ def on_after_update(mapper, connection, target):
     columns = [c.name for c in class_mapper(target.__class__).columns]
     object_session(target).expire(target, attribute_names=columns)
     index_object(target, request=request, nested_only=True, with_refs=False)
+
+    # Reindex the item's parents. This must be done after the child has been processes
+    for parent, children_field in target.get_parent_documents(nested_only=True):
+        columns = [c.name for c in class_mapper(parent.__class__).columns]
+        object_session(parent).expire(parent, attribute_names=columns)
+        ES(parent.__class__.__name__).index_nested_document(parent, children_field, target)
 
 
 def on_after_delete(mapper, connection, target):
