@@ -4,6 +4,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.declarative import DeclarativeMeta
 from sqlalchemy.orm import object_session, class_mapper, attributes
 from pyramid_sqlalchemy import Session
+from nefertari.elasticsearch import ES
 
 from nefertari.utils import to_dicts
 
@@ -11,9 +12,8 @@ log = logging.getLogger(__name__)
 
 
 def index_object(obj, with_refs=True, **kwargs):
-    from nefertari.elasticsearch import ES
     es = ES(obj.__class__.__name__)
-    es.index(obj.to_dict(), **kwargs)
+    es.index(obj, **kwargs)
     if with_refs:
         es.index_relations(obj, **kwargs)
 
@@ -47,7 +47,13 @@ def on_after_update(mapper, connection, target):
     # Reload `target` to get access to processed fields values
     columns = [c.name for c in class_mapper(target.__class__).columns]
     object_session(target).expire(target, attribute_names=columns)
-    index_object(target, request=request, nested_only=True)
+    index_object(target, request=request, nested_only=True, with_refs=False)
+
+    # Reindex the item's parents. This must be done after the child has been processes
+    for parent, children_field in target.get_parent_documents(nested_only=True):
+        columns = [c.name for c in class_mapper(parent.__class__).columns]
+        object_session(parent).expire(parent, attribute_names=columns)
+        ES(parent.__class__.__name__).index_nested_document(parent, children_field, target)
 
 
 def on_after_delete(mapper, connection, target):
@@ -73,8 +79,7 @@ def on_bulk_update(update_context):
 
     from nefertari.elasticsearch import ES
     es = ES(source=model_cls.__name__)
-    documents = to_dicts(objects)
-    es.index(documents, request=request)
+    es.index(objects, request=request)
 
     # Reindex relationships
     es.bulk_index_relations(objects, request=request, nested_only=True)
@@ -109,4 +114,4 @@ class ESMetaclass(DeclarativeMeta):
     def __init__(self, name, bases, attrs):
         self._index_enabled = True
         setup_es_signals_for(self)
-        return super(ESMetaclass, self).__init__(name, bases, attrs)
+        super(ESMetaclass, self).__init__(name, bases, attrs)

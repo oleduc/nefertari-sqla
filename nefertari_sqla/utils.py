@@ -1,7 +1,6 @@
 from sqlalchemy.orm.properties import RelationshipProperty
 from sqlalchemy.orm import class_mapper
 
-
 relationship_fields = (
     RelationshipProperty,
 )
@@ -30,6 +29,7 @@ def get_relationship_cls(field, model_cls):
     relationships = {r.key: r for r in mapper.relationships}
     field_obj = relationships[field]
     return field_obj.mapper.class_
+
 
 
 class FieldsQuerySet(list):

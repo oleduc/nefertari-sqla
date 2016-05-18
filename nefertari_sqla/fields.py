@@ -78,6 +78,7 @@ class BaseField(Column):
         """
         if value is not None and key == 'name':
             self.type._column_name = value
+
         return super(BaseField, self).__setattr__(key, value)
 
     def process_type_args(self, kwargs):
@@ -234,17 +235,22 @@ class StringField(BaseField):
     _type_unchanged_kwargs = (
         'collation', 'convert_unicode', 'unicode_error',
         '_warn_on_bytestring', 'min_length', 'max_length')
+    _es_multi_field = None
 
     def process_type_args(self, kwargs):
         """
         Changed:
             max_length -> length
         """
+        if 'es_multi_field' in kwargs:
+            self._es_multi_field = kwargs.get('es_multi_field')
+
         type_args, type_kw, cleaned_kw = super(
             StringField, self).process_type_args(kwargs)
         type_kw.update({
             'length': type_kw.get('max_length'),
         })
+
         return type_args, type_kw, cleaned_kw
 
 
