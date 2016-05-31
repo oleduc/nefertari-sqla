@@ -23,7 +23,6 @@ from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
 
-
 log = logging.getLogger(__name__)
 
 
@@ -48,6 +47,10 @@ def get_document_classes():
         if tablename:
             document_classes[model_name] = model_cls
     return document_classes
+
+
+def is_object_document(document):
+    return isinstance(document, BaseDocument)
 
 
 def process_lists(_dict):
@@ -121,12 +124,16 @@ class BaseMixin(object):
     def get_es_mapping(cls, _depth=None, types_map=None):
         """ Generate ES mapping from model schema. """
         from nefertari.elasticsearch import ES
+
         if types_map is None:
             types_map = TYPES_MAP
+
         if _depth is None:
             _depth = cls._nesting_depth
+
         depth_reached = _depth <= 0
 
+        nested_substitutions = []
         properties = {}
         mapping = {
             ES.src2type(cls.__name__): {
@@ -158,16 +165,21 @@ class BaseMixin(object):
         for name, column in relationships.items():
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
-                submapping = column.mapper.class_.get_es_mapping(
-                    _depth=_depth-1)
+                nested_substitutions.append(name)
+
+                submapping, sub_substitutions = column.mapper.class_.get_es_mapping(
+                    _depth=_depth - 1)
+
                 column_type.update(list(submapping.values())[0])
-            else:
-                rel_pk_field = column.mapper.class_.pk_field_type()
-                column_type = types_map[rel_pk_field]
+                properties[name + "_nested"] = column_type
+
+            rel_pk_field = column.mapper.class_.pk_field_type()
+            column_type = types_map[rel_pk_field]
             properties[name] = column_type
 
         properties['_pk'] = {'type': 'string'}
-        return mapping
+
+        return mapping, nested_substitutions
 
     @classmethod
     def autogenerate_for(cls, model, set_to):
@@ -209,9 +221,9 @@ class BaseMixin(object):
         """ Filter out fields with invalid names. """
         fields = cls.fields_to_query()
         return dictset({
-            name: val for name, val in params.items()
-            if name.split('__')[0] in fields
-        })
+                           name: val for name, val in params.items()
+                           if name.split('__')[0] in fields
+                           })
 
     @classmethod
     def apply_fields(cls, query_set, _fields):
@@ -422,9 +434,9 @@ class BaseMixin(object):
 
         # Remove any __ legacy instructions from this point on
         params = dictset({
-            key: val for key, val in params.items()
-            if not key.startswith('__')
-        })
+                             key: val for key, val in params.items()
+                             if not key.startswith('__')
+                             })
 
         iterables_exprs, params = cls._pop_iterables(params)
 
@@ -505,7 +517,7 @@ class BaseMixin(object):
         pk_field = cls.pk_field()
 
         def _convert(val):
-            return dict(zip(fields, val+add_vals))
+            return dict(zip(fields, val + add_vals))
 
         def _add_pk(obj):
             if pk_field in obj:
@@ -669,9 +681,6 @@ class BaseMixin(object):
         parts = [
             '{}={}'.format(pk_field, getattr(self, pk_field)),
         ]
-        if hasattr(self, '_version'):
-            parts.append('v=%s' % self._version)
-
         return '<{}: {}>'.format(self.__class__.__name__, ', '.join(parts))
 
     @classmethod
@@ -683,7 +692,7 @@ class BaseMixin(object):
     @classmethod
     def get_null_values(cls):
         """ Get null values of :cls: fields. """
-        skip_fields = {'_version', '_acl'}
+        skip_fields = set(['_acl'])
         null_values = {}
         columns = cls._mapped_columns()
         columns.update(cls._mapped_relationships())
@@ -697,34 +706,56 @@ class BaseMixin(object):
             null_values[name] = value
         return null_values
 
+    @staticmethod
+    def get_encoded_field_value(value, _depth, nest_objects=False):
+        if nest_objects:
+            encoder = lambda v: v.to_dict(_depth=_depth - 1)
+        else:
+            encoder = lambda v: getattr(v, v.pk_field(), None)
+
+        if isinstance(value, BaseMixin):
+            value = encoder(value)
+        elif isinstance(value, InstrumentedList):
+            value = [encoder(val) for val in value]
+        elif hasattr(value, 'to_dict'):
+            value = value.to_dict(_depth=_depth - 1)
+
+        return value
+
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
+        indexable = kwargs.get('indexable', False)
+
         if _depth is None:
             _depth = self._nesting_depth
         depth_reached = _depth is not None and _depth <= 0
 
         _data = dictset()
         native_fields = self.__class__.native_fields()
+
         for field in native_fields:
             value = getattr(self, field, None)
 
-            include = field in self._nested_relationships
-            if not include or depth_reached:
-                encoder = lambda v: getattr(v, v.pk_field(), None)
-            else:
-                encoder = lambda v: v.to_dict(_depth=_depth-1)
+            is_nested = field in self._nested_relationships
 
-            if isinstance(value, BaseMixin):
-                value = encoder(value)
-            elif isinstance(value, InstrumentedList):
-                value = [encoder(val) for val in value]
-            elif hasattr(value, 'to_dict'):
-                value = value.to_dict(_depth=_depth-1)
+            # This is where we expand nested backrefs into a "name_nested"->Object and "name"->Pk indexed field
+            if indexable is True and is_nested is True and not depth_reached:
+                _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
 
-            _data[field] = value
+            _data[field] = BaseMixin.get_encoded_field_value(
+                value,
+                _depth,
+                nest_objects=(is_nested and depth_reached is False and indexable is False)
+            )
+
         _data['_type'] = self._type
         _data['_pk'] = str(getattr(self, self.pk_field()))
+
         return _data
+
+    def to_indexable_dict(self, **kwargs):
+        kwargs["indexable"] = True
+        return self.to_dict(**kwargs)
 
     def update_iterables(self, params, attr, unique=False,
                          value_type=None, save=True,
@@ -835,6 +866,40 @@ class BaseMixin(object):
 
             yield (model_cls, value)
 
+    def get_parent_documents(self, nested_only=False):
+        iter_props = class_mapper(self.__class__).iterate_properties
+        backref_props = [p for p in iter_props
+                         if isinstance(p, properties.RelationshipProperty)]
+
+        for prop in backref_props:
+            value = getattr(self, prop.key)
+
+            # Backref don't have _init_kwargs
+            if hasattr(prop, "_init_kwargs"):
+                continue
+
+            # Backrefs don't have backrefs
+            if prop.backref is not None:
+                continue
+
+            # Backrefs only have one related item
+            if prop.uselist:
+                continue
+
+            # Do not index empty values
+            if not value:
+                continue
+
+            model_cls = value.__class__
+
+            if nested_only:
+                backref = prop.back_populates
+
+                if backref and backref not in model_cls._nested_relationships:
+                    continue
+
+            yield (value, prop.back_populates)
+
     def _is_modified(self):
         """ Determine if instance is modified.
 
@@ -863,15 +928,8 @@ class BaseDocument(BaseObject, BaseMixin):
     """
     __abstract__ = True
 
-    _version = IntegerField(default=0)
-
-    def _bump_version(self):
-        if self._is_modified():
-            self._version = (self._version or 0) + 1
-
     def save(self, request=None):
         session = object_session(self)
-        self._bump_version()
         self._request = request
         session = session or Session()
         try:
@@ -892,7 +950,6 @@ class BaseDocument(BaseObject, BaseMixin):
         self._request = request
         try:
             self._update(params)
-            self._bump_version()
             session = object_session(self)
             session.add(self)
             session.flush()
