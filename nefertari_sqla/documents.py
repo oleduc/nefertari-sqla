@@ -2,6 +2,8 @@ import copy
 import logging
 
 import six
+from sqlalchemy import text
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import (
     class_mapper, object_session, properties, attributes)
 from sqlalchemy.orm.collections import InstrumentedList
@@ -803,6 +805,7 @@ class BaseMixin(object):
         def update_list(update_params):
             final_value = getattr(self, attr, []) or []
             final_value = copy.deepcopy(final_value)
+
             if update_params is None or update_params == '':
                 if not final_value:
                     return
@@ -812,20 +815,36 @@ class BaseMixin(object):
             else:
                 keys = update_params
 
-            positive, negative = split_keys(keys)
+            positives, negatives = split_keys(keys)
 
-            if not (positive + negative):
+            if not (positives + negatives):
                 raise JHTTPBadRequest('Missing params')
 
-            if positive:
-                if unique:
-                    positive = [v for v in positive if v not in final_value]
-                final_value += positive
+            parameters = {}
+            cls_name = self.__class__.__name__
+            location_dot_notation = "\""+cls_name.lower()+"\"" + "." + attr
+            sql_expression = location_dot_notation
 
-            if negative:
-                final_value = list(set(final_value) - set(negative))
+            for index, negative in enumerate(negatives):
+                index_str = str(index)
 
-            setattr(self, attr, final_value)
+                if sql_expression == location_dot_notation:
+                    sql_expression = "array_remove(" + location_dot_notation + ", :negative_" + index_str + ")"
+                else:
+                    sql_expression = "array_remove(" + sql_expression + ", :negative_" + index_str + ")"
+
+                parameters["negative_" + index_str] = negative
+
+            if len(positives) > 0:
+                sql_expression = "array_cat(" + sql_expression + ", :added_items)"
+                parameters["added_items"] = list(set(positives) - set(getattr(self, attr)))
+
+            expression = text(sql_expression).bindparams(**parameters)
+            setattr(self, attr, expression)
+
+            if len(positives + negatives) > 0:
+                object_session(self).flush()
+
             if save:
                 self.save(request)
 
