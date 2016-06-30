@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 install_requires = [
     'elasticsearch',
-    'nefertari>=0.6.1',
+    'nefertari',
     'psycopg2',
     'pyramid_sqlalchemy',
     'pyramid_tm',
@@ -29,6 +29,9 @@ setup(
         "Topic :: Database :: Database Engines/Servers",
     ],
     author='Ramses',
+    dependency_links=[
+        'git+https://github.com/geniusproject/nefertari.git@master#egg=nefertari',
+    ],
     author_email='hello@ramses.tech',
     url='https://github.com/ramses-tech/nefertari-sqla',
     keywords='web wsgi bfg pylons pyramid rest sqlalchemy',
