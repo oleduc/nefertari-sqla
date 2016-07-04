@@ -4,6 +4,6 @@ pytest-cov
 releases
 sphinx
 
-git+https://github.com/ramses-tech/nefertari.git@develop#egg=nefertari
+git+https://github.com/geniusproject/nefertari.git@develop#egg=nefertari
 
 -e .
