@@ -632,7 +632,6 @@ class BaseMixin(object):
             del_items = del_queryset.all()
             del_count = del_queryset.delete(
                 synchronize_session=synchronize_session)
-            cls.bulk_expire_parents(del_items)
             on_bulk_delete(cls, del_items, request)
             return del_count
         items_count = len(items)
@@ -640,7 +639,6 @@ class BaseMixin(object):
         for item in items:
             item._request = request
             session.delete(item)
-        cls.bulk_expire_parents(items, session)
         session.flush()
         return items_count
     
@@ -996,13 +994,14 @@ class BaseDocument(BaseObject, BaseMixin):
         self._request = request
         session = object_session(self)
         session.delete(self)
-        self.expire_parents(session)
 
     def expire_parents(self, session=None):
+
         if session is None:
             session = object_session(self)
         for document, backref_name in self.get_parent_documents():
             session.expire(document, [backref_name])
+
 
     @classmethod
     def get_field_params(cls, field_name):
