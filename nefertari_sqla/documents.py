@@ -996,12 +996,10 @@ class BaseDocument(BaseObject, BaseMixin):
         session.delete(self)
 
     def expire_parents(self, session=None):
-
         if session is None:
             session = object_session(self)
         for document, backref_name in self.get_parent_documents():
             session.expire(document, [backref_name])
-
 
     @classmethod
     def get_field_params(cls, field_name):
