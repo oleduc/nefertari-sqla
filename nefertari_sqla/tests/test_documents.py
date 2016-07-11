@@ -716,22 +716,22 @@ class TestBaseDocument(object):
 
     # expire parent in current session for updating data if child was deleted
     def test_expire_parents(self, memory_db, db_session):
-        class Child(docs.BaseDocument):
-            __tablename__ = 'child'
+        class ChildA(docs.BaseDocument):
+            __tablename__ = 'childA'
             id = fields.IdField(primary_key=True)
             parent_id = fields.ForeignKeyField(
-                ref_document='Parent', ref_column='parent.id',
+                ref_document='ParentA', ref_column='parentA.id',
                 ref_column_type=fields.IdField)
 
-        class Parent(docs.BaseDocument):
-            __tablename__ = 'parent'
+        class ParentA(docs.BaseDocument):
+            __tablename__ = 'parentA'
             id = fields.IdField(primary_key=True)
             children = fields.Relationship(
-                document='Child', backref_name='parent')
+                document='ChildA', backref_name='parentA')
 
         connection = memory_db()
-        parent = Parent(id=1)
-        child = Child(id=1, parent=parent)
+        parent = ParentA(id=1)
+        child = ChildA(id=1, parentA=parent)
         session = db_session(connection)
         session.add(parent)
         session.flush()
