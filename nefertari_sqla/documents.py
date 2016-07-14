@@ -643,8 +643,7 @@ class BaseMixin(object):
         return items_count
 
     @classmethod
-    def _update_many(cls, items, params, request=None,
-                     synchronize_session='fetch'):
+    def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
 
         When queryset passed, Query.update() is used to update it but
@@ -657,14 +656,37 @@ class BaseMixin(object):
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
             upd_queryset._request = request
-            upd_count = upd_queryset.update(
+            items_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
-            updated_item = upd_queryset.all()
-            return {"count": upd_count, "items": updated_item}
-        items_count = len(items)
-        for item in items:
-            item.update(params, request)
-        return {"count": items_count, "items": items}
+            updated_items = upd_queryset.all() if return_documents is True else []
+        else:
+            is_batchable = True
+
+            # If params doesn't contain iterable values, we can batch update it
+            for key, value in params.items():
+                if isinstance(value, (list, dict)):
+                    is_batchable = False
+
+            if is_batchable:
+                pk_field = cls.pk_field()
+
+                pks = []
+                for item in items:
+                    pks.append(getattr(item, pk_field))
+
+                primary_key = getattr(cls, pk_field)
+                upd_queryset = Session().query(cls).filter(primary_key.in_(pks))
+                items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
+                updated_items = upd_queryset.all() if return_documents is True else []
+            else:
+                items_count = len(items)
+
+                for item in items:
+                    item.update(params, request)
+
+                updated_items = items if return_documents is True else []
+
+        return {"count": items_count, "items": updated_items}
 
     @classmethod
     def _clean_queryset(cls, queryset):
