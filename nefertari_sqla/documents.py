@@ -664,8 +664,9 @@ class BaseMixin(object):
 
             # If params doesn't contain iterable values, we can batch update it
             for key, value in params.items():
-                if isinstance(value, (list, dict)):
+                if isinstance(value, (list, dict)) or isinstance(value, BaseDocument):
                     is_batchable = False
+                    break
 
             if is_batchable:
                 pk_field = cls.pk_field()
