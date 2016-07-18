@@ -641,7 +641,15 @@ class BaseMixin(object):
             session.delete(item)
         session.flush()
         return items_count
-
+    
+    @classmethod
+    def bulk_expire_parents(cls, items, session=None):
+        if session is None:
+            session = Session()
+        for item in items:
+            item.expire_parents(session)
+            
+        
     @classmethod
     def _update_many(cls, items, params, request=None,
                      synchronize_session='fetch'):
@@ -984,7 +992,14 @@ class BaseDocument(BaseObject, BaseMixin):
 
     def delete(self, request=None):
         self._request = request
-        object_session(self).delete(self)
+        session = object_session(self)
+        session.delete(self)
+
+    def expire_parents(self, session=None):
+        if session is None:
+            session = object_session(self)
+        for document, backref_name in self.get_parent_documents():
+            session.expire(document, [backref_name])
 
     @classmethod
     def get_field_params(cls, field_name):
