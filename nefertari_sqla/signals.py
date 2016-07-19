@@ -63,6 +63,7 @@ def on_after_delete(mapper, connection, target):
     es = ES(model_cls.__name__)
     obj_id = getattr(target, model_cls.pk_field())
     es.delete(obj_id, request=request)
+    target.expire_parents()
     es.index_relations(target, request=request)
 
 
@@ -95,7 +96,7 @@ def on_bulk_delete(model_cls, objects, request):
     from nefertari.elasticsearch import ES
     es = ES(source=model_cls.__name__)
     es.delete(ids, request=request)
-
+    model_cls.bulk_expire_parents(objects)
     # Reindex relationships
     es.bulk_index_relations(objects, request=request)
 
