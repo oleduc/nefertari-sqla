@@ -714,6 +714,32 @@ class TestBaseMixin(object):
 
 class TestBaseDocument(object):
 
+    # expire parent in current session for updating data if child was deleted
+    def test_expire_parents(self, memory_db, db_session):
+        class ChildA(docs.BaseDocument):
+            __tablename__ = 'childA'
+            id = fields.IdField(primary_key=True)
+            parent_id = fields.ForeignKeyField(
+                ref_document='ParentA', ref_column='parentA.id',
+                ref_column_type=fields.IdField)
+
+        class ParentA(docs.BaseDocument):
+            __tablename__ = 'parentA'
+            id = fields.IdField(primary_key=True)
+            children = fields.Relationship(
+                document='ChildA', backref_name='parentA')
+
+        connection = memory_db()
+        parent = ParentA(id=1)
+        child = ChildA(id=1, parentA=parent)
+        session = db_session(connection)
+        session.add(parent)
+        session.flush()
+        session.delete(child)
+        child.expire_parents(session=session)
+
+        assert len(parent.children) == 0
+
     @patch.object(docs, 'object_session')
     def test_save(self, obj_session, simple_model, memory_db):
         memory_db()
