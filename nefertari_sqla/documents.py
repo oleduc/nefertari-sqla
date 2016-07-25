@@ -21,6 +21,8 @@ from nefertari.json_httpexceptions import (
 from nefertari.utils import (
     process_fields, process_limit, _split, dictset,
     drop_reserved_params)
+
+from nefertari.utils.data import DocumentView
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
@@ -648,8 +650,7 @@ class BaseMixin(object):
             session = Session()
         for item in items:
             item.expire_parents(session)
-            
-        
+
     @classmethod
     def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
@@ -661,41 +662,54 @@ class BaseMixin(object):
         If some of the methods listed above were called, or :items: is not
         a Query instance, one-by-one items update is performed.
         """
+
+        # if isinstance(items, Query):
+        #     upd_queryset = cls._clean_queryset(items)
+        #     upd_queryset._request = request
+        #     items_count = upd_queryset.update(
+        #         params, synchronize_session=synchronize_session)
+        #     updated_items = upd_queryset.all() if return_documents is True else []
+        # else:
+        #     is_batchable = True
+        #
+        #     # If params doesn't contain iterable values, we can batch update it
+        #     for key, value in params.items():
+        #         if isinstance(value, (list, dict)) or isinstance(value, BaseDocument):
+        #             is_batchable = False
+        #             break
+        #
+        #     if is_batchable:
+        #         pk_field = cls.pk_field()
+        #
+        #         pks = []
+        #         for item in items:
+        #             pks.append(getattr(item, pk_field))
+        #
+        #         primary_key = getattr(cls, pk_field)
+        #         upd_queryset = Session().query(cls).filter(primary_key.in_(pks))
+        #         items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
+        #         updated_items = upd_queryset.all() if return_documents is True else []
+        #     else:
+        #         items_count = len(items)
+        #
+        #         for item in items:
+        #             item.update(params, request)
+        #
+        #         updated_items = items if return_documents is True else []
+        #
+        # return {"count": items_count, "items": updated_items}
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
             upd_queryset._request = request
-            items_count = upd_queryset.update(
+            upd_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
-            updated_items = upd_queryset.all() if return_documents is True else []
-        else:
-            is_batchable = True
+            updated_item = upd_queryset.all()
+            return {"count": upd_count, "items": updated_item}
+        items_count = len(items)
+        for item in items:
+            item.update(params, request)
 
-            # If params doesn't contain iterable values, we can batch update it
-            for key, value in params.items():
-                if isinstance(value, (list, dict)) or isinstance(value, BaseDocument):
-                    is_batchable = False
-                    break
-
-            if is_batchable:
-                pk_field = cls.pk_field()
-
-                pks = []
-                for item in items:
-                    pks.append(getattr(item, pk_field))
-
-                primary_key = getattr(cls, pk_field)
-                upd_queryset = Session().query(cls).filter(primary_key.in_(pks))
-                items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
-                updated_items = upd_queryset.all() if return_documents is True else []
-            else:
-                items_count = len(items)
-
-                for item in items:
-                    item.update(params, request)
-
-                updated_items = items if return_documents is True else []
-
-        return {"count": items_count, "items": updated_items}
+        return {"count": items_count, "items": items}
 
     @classmethod
     def _clean_queryset(cls, queryset):
@@ -757,13 +771,14 @@ class BaseMixin(object):
 
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
+        _obj_type = kwargs.get('type', dictset)
         indexable = kwargs.get('indexable', False)
 
         if _depth is None:
             _depth = self._nesting_depth
         depth_reached = _depth is not None and _depth <= 0
 
-        _data = dictset()
+        _data = _obj_type()
         native_fields = self.__class__.native_fields()
 
         for field in native_fields:
@@ -788,6 +803,11 @@ class BaseMixin(object):
 
     def to_indexable_dict(self, **kwargs):
         kwargs["indexable"] = True
+        return self.to_dict(**kwargs)
+
+    def get_view(self, **kwargs):
+        kwargs["_depth"] = 0
+        kwargs["type"] = DocumentView
         return self.to_dict(**kwargs)
 
     def update_iterables(self, params, attr, unique=False,
