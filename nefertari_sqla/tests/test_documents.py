@@ -472,7 +472,7 @@ class TestBaseMixin(object):
         clean_items.all = Mock(return_value=[1, 2, 3])
         clean_items.update = Mock()
         mock_clean.return_value = clean_items
-        result = docs.BaseMixin._update_many(items, {'foo': 'bar'})
+        result = docs.BaseMixin._update_mcd any(items, {'foo': 'bar'})
         mock_clean.assert_called_once_with(items)
         clean_items.update.assert_called_once_with(
             {'foo': 'bar'}, synchronize_session='fetch')
