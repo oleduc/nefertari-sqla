@@ -772,13 +772,15 @@ class BaseMixin(object):
             is_nested = field in self._nested_relationships
 
             # This is where we expand nested backrefs into a "name_nested"->Object and "name"->Pk indexed field
-            if indexable is True and is_nested is True and not depth_reached:
+            if indexable and is_nested and not depth_reached:
+                # Recursive step
                 _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
 
+            # Recursive step
             _data[field] = BaseMixin.get_encoded_field_value(
                 value,
                 _depth,
-                nest_objects=(is_nested and depth_reached is False and indexable is False)
+                nest_objects=(not indexable and is_nested and not depth_reached)
             )
 
         _data['_type'] = self._type
