@@ -24,8 +24,26 @@ from nefertari.utils import (
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
+from nefertari_sqla.utils import SingletonMeta
 
 log = logging.getLogger(__name__)
+
+
+class SessionHolder(metaclass=SingletonMeta):
+
+    def __init__(self):
+        # use pyramid_sqlaclhemy default session factory
+        self.session_factory = Session
+
+    def set_session_factory(self, factory):
+        self.session_factory = factory
+
+    def __call__(self):
+        return self.session_factory()
+
+    def restore_default(self):
+        from pyramid_sqlalchemy import Session
+        self.session_factory = Session
 
 
 def get_document_cls(name):
@@ -119,6 +137,8 @@ class BaseMixin(object):
     _hidden_fields = None
     _nested_relationships = ()
     _nesting_depth = 1
+
+    session_factory = SessionHolder()
 
     _type = property(lambda self: self.__class__.__name__)
 
@@ -285,7 +305,7 @@ class BaseMixin(object):
         ids = [str(id_) for id_ in ids if id_ is not None]
         field_obj = getattr(cls, id_name)
 
-        query_set = Session().query(cls).filter(field_obj.in_(ids))
+        query_set = cls.session_factory().query(cls).filter(field_obj.in_(ids))
 
         if params:
             params['query_set'] = query_set.from_self()
@@ -432,7 +452,7 @@ class BaseMixin(object):
         _raise_on_empty = params.pop('_raise_on_empty', False)
 
         if query_set is None:
-            query_set = Session().query(cls)
+            query_set = cls.session_factory().query(cls)
 
         # Remove any __ legacy instructions from this point on
         params = dictset({
@@ -635,7 +655,7 @@ class BaseMixin(object):
             on_bulk_delete(cls, del_items, request)
             return del_count
         items_count = len(items)
-        session = Session()
+        session = cls.session_factory()
         for item in items:
             item._request = request
             session.delete(item)
@@ -645,7 +665,7 @@ class BaseMixin(object):
     @classmethod
     def bulk_expire_parents(cls, items, session=None):
         if session is None:
-            session = Session()
+            session = cls.session_factory()
         for item in items:
             item.expire_parents(session)
             
@@ -684,7 +704,7 @@ class BaseMixin(object):
                     pks.append(getattr(item, pk_field))
 
                 primary_key = getattr(cls, pk_field)
-                upd_queryset = Session().query(cls).filter(primary_key.in_(pks))
+                upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
                 items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
                 updated_items = upd_queryset.all() if return_documents is True else []
             else:
@@ -981,7 +1001,7 @@ class BaseDocument(BaseObject, BaseMixin):
     def save(self, request=None):
         session = object_session(self)
         self._request = request
-        session = session or Session()
+        session = session or self.session_factory()
         try:
             session.add(self)
             session.flush()
