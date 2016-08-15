@@ -518,7 +518,10 @@ def Relationship(**kwargs):
         del rel_kw['dynamic']
 
     if 'dynamic' in rel_kw and 'uselist' not in rel_kw:
-        raise UnsupportedFiledValueError('You can not use "dynamic" option without  using "uselist: true"')
+        raise ValueError(
+            'You can not use "dynamic" option for {document} backref without using "uselist: true"'
+            .format(document=rel_document)
+        )
 
     if backref_kw:
         if not backref_kw.get('uselist'):
@@ -529,7 +532,3 @@ def Relationship(**kwargs):
     rel_field = relationship(rel_document, **rel_kw)
     rel_field._init_kwargs = _init_kwargs
     return rel_field
-
-
-class UnsupportedFiledValueError(Exception):
-    pass
