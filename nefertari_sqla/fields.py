@@ -464,7 +464,7 @@ relationship_kwargs = {
     'innerjoin', 'distinct_target_key', 'doc',
     'active_history', 'cascade_backrefs', 'load_on_pending',
     'strategy_class', '_local_remote_pairs', 'query_class', 'info',
-    'document', 'name',
+    'document', 'name', 'dynamic'
 }
 
 
@@ -509,8 +509,13 @@ def Relationship(**kwargs):
             rel_kw[key] = val
 
     rel_document = rel_kw.pop('document')
+
     if 'uselist' in rel_kw and not rel_kw['uselist']:
         rel_kw['lazy'] = 'immediate'
+
+    if 'uselist' in rel_kw and rel_kw['uselist'] and 'dynamic' in rel_kw and rel_kw['dynamic']:
+        rel_kw['lazy'] = 'dynamic'
+        del rel_kw['dynamic']
 
     if backref_kw:
         if not backref_kw.get('uselist'):
