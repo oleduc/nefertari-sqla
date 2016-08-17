@@ -934,6 +934,10 @@ class BaseMixin(object):
                 value = [value]
             model_cls = value[0].__class__
 
+            if model_cls == AppenderQuery:
+                model_cls = value[0].instance.__class__
+                value[0] = value[0].instance
+
             if nested_only:
                 backref = prop.back_populates
 
