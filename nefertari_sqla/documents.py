@@ -682,42 +682,6 @@ class BaseMixin(object):
         If some of the methods listed above were called, or :items: is not
         a Query instance, one-by-one items update is performed.
         """
-
-        # if isinstance(items, Query):
-        #     upd_queryset = cls._clean_queryset(items)
-        #     upd_queryset._request = request
-        #     items_count = upd_queryset.update(
-        #         params, synchronize_session=synchronize_session)
-        #     updated_items = upd_queryset.all() if return_documents is True else []
-        # else:
-        #     is_batchable = True
-        #
-        #     # If params doesn't contain iterable values, we can batch update it
-        #     for key, value in params.items():
-        #         if isinstance(value, (list, dict)) or isinstance(value, BaseDocument):
-        #             is_batchable = False
-        #             break
-        #
-        #     if is_batchable:
-        #         pk_field = cls.pk_field()
-        #
-        #         pks = []
-        #         for item in items:
-        #             pks.append(getattr(item, pk_field))
-        #
-        #         primary_key = getattr(cls, pk_field)
-        #         upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
-        #         items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
-        #         updated_items = upd_queryset.all() if return_documents is True else []
-        #     else:
-        #         items_count = len(items)
-        #
-        #         for item in items:
-        #             item.update(params, request)
-        #
-        #         updated_items = items if return_documents is True else []
-        #
-        # return {"count": items_count, "items": updated_items}
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
             upd_queryset._request = request
