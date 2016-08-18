@@ -928,15 +928,17 @@ class BaseMixin(object):
         for prop in backref_props:
             value = getattr(self, prop.key)
             # Do not index empty values
+
             if not value:
                 continue
+
+            # we don't use appender query as _nested_relationships
+            if isinstance(value, AppenderQuery):
+                continue
+
             if not isinstance(value, list):
                 value = [value]
             model_cls = value[0].__class__
-
-            if model_cls == AppenderQuery:
-                model_cls = value[0].instance.__class__
-                value[0] = value[0].instance
 
             if nested_only:
                 backref = prop.back_populates
