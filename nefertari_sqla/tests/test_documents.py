@@ -102,7 +102,7 @@ class TestBaseMixin(object):
         session.flush()
         gen = my_parent.get_related_documents(nested_only=True)
         res = tuple(gen)
-        assert len(res) == 1
+        assert len(res) == 0
 
     def test_get_es_mapping(self, memory_db):
         class MyModel(docs.BaseDocument):
