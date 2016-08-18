@@ -932,6 +932,7 @@ class BaseMixin(object):
             if not value:
                 continue
 
+
             # we don't use appender query as _nested_relationships
             if isinstance(value, AppenderQuery):
                 continue
