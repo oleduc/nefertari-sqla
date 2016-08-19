@@ -627,7 +627,7 @@ class BaseMixin(object):
             if key == pk_field:
                 continue
             if key in iter_columns:
-                self.update_iterables(new_value, key, unique=True, save=False)
+                self.update_iterables(new_value, key, save=False)
             else:
                 setattr(self, key, new_value)
         return self
@@ -796,9 +796,7 @@ class BaseMixin(object):
         kwargs["type"] = DocumentView
         return self.to_dict(**kwargs)
 
-    def update_iterables(self, params, attr, unique=False,
-                         value_type=None, save=True,
-                         request=None):
+    def update_iterables(self, params, attr, save=True, request=None):
         self._request = request
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
@@ -840,7 +838,7 @@ class BaseMixin(object):
                 self.save(request)
 
         def update_list(update_params):
-            final_value = getattr(self, attr, []) or []
+            final_value = getattr(self, attr) or []
             final_value = copy.deepcopy(final_value)
 
             if update_params is None or update_params == '':
@@ -854,7 +852,7 @@ class BaseMixin(object):
 
             positives, negatives = split_keys(keys)
 
-            if not (positives + negatives):
+            if not positives and not negatives:
                 raise JHTTPBadRequest('Missing params')
 
             parameters = {}
@@ -874,13 +872,12 @@ class BaseMixin(object):
 
             if len(positives) > 0:
                 sql_expression = "array_cat(" + sql_expression + ", :added_items)"
-                parameters["added_items"] = list(set(positives) - set(getattr(self, attr)))
+                parameters["added_items"] = list(set(positives) - set(final_value))
 
             expression = text(sql_expression).bindparams(**parameters)
             setattr(self, attr, expression)
 
-            if len(positives + negatives) > 0:
-                object_session(self).flush()
+            object_session(self).flush()
 
             if save:
                 self.save(request)

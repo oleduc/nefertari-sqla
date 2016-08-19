@@ -621,13 +621,16 @@ class TestBaseMixin(object):
         obj_session().flush.assert_called_once_with()
 
         # Nulify
-        myobj.update_iterables("", attr='settings', unique=False)
+        myobj.update_iterables("", attr='settings')
         assert myobj.settings == {}
-        myobj.update_iterables(None, attr='settings', unique=False)
+        myobj.update_iterables(None, attr='settings')
         assert myobj.settings == {}
 
     @patch.object(docs, 'object_session')
     def test_update_iterables_list(self, obj_session, memory_db):
+        """
+        Since update_iterables uses TextClause on list, and session obj is mocked, we can't properly test values
+        """
         class MyModel(docs.BaseDocument):
             __tablename__ = 'mymodel'
             id = fields.IdField(primary_key=True)
@@ -635,35 +638,22 @@ class TestBaseMixin(object):
 
         memory_db()
         myobj = MyModel(id=1)
+        myobj.save = Mock()
 
         # No existing value
         myobj.update_iterables(
-            {'setting1': '', 'setting2': '', '__boo': 'boo'},
+            ['setting1', 'setting2'],
             attr='settings', save=False)
-        assert not obj_session.called
-        assert sorted(myobj.settings) == ['setting1', 'setting2']
-
-        # New values to existing value
-        myobj.update_iterables(
-            {'-setting1': '', 'setting3': ''}, attr='settings',
-            unique=True, save=False)
-        assert not obj_session.called
-        assert sorted(myobj.settings) == ['setting2', 'setting3']
+        assert not myobj.save.called
+        assert obj_session(myobj).flush.called
 
         # With save
+        myobj = MyModel(id=2)
         myobj.update_iterables(
-            {'setting2': ''}, attr='settings', unique=False, save=True)
-        assert sorted(myobj.settings) == ['setting2', 'setting2', 'setting3']
-        obj_session.assert_called_once_with(myobj)
+            ['setting2'], attr='settings', save=True)
+        obj_session.assert_called_with(myobj)
         obj_session().add.assert_called_once_with(myobj)
-        obj_session().flush.assert_called_once_with()
-
-        # Nulify
-        myobj.update_iterables(None, attr='settings', unique=False)
-        assert myobj.settings == []
-        myobj.update_iterables("", attr='settings', unique=False)
-        assert myobj.settings == []
-        docs.SessionHolder().restore_default()
+        obj_session().flush.assert_called_with()
 
     def test_get_related_documents(self, memory_db):
 
