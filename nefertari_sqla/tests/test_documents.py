@@ -77,6 +77,33 @@ class TestBaseMixin(object):
     def teardown_method(self, method):
         docs.SessionHolder().restore_default()
 
+    def test_appender_query_relations_not_indexed(self, memory_db, db_session):
+        class ChildC(docs.BaseDocument):
+            __tablename__ = 'childC'
+            id = fields.IdField(primary_key=True)
+            parent_id = fields.ForeignKeyField(
+                ref_document='ParentC', ref_column='parentC.id',
+                ref_column_type=fields.IdField)
+
+        class ParentC(docs.BaseDocument):
+            __tablename__ = 'parentC'
+            id = fields.IdField(primary_key=True)
+            children = fields.Relationship(
+                document='ChildC', backref_name='parentA',  uselist=True, lazy='dynamic')
+
+        connection = memory_db()
+        session = db_session(connection)
+        my_parent = ParentC(id=2)
+        my_child = ChildC(id=3, parent_id=2)
+        my_child2 = ChildC(id=4, parent_id=2)
+        session.add(my_parent)
+        session.add(my_child)
+        session.add(my_child2)
+        session.flush()
+        gen = my_parent.get_related_documents(nested_only=True)
+        res = tuple(gen)
+        assert len(res) == 0
+
     def test_get_es_mapping(self, memory_db):
         class MyModel(docs.BaseDocument):
             __tablename__ = 'mymodel'
