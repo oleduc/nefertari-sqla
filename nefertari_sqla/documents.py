@@ -22,6 +22,8 @@ from nefertari.json_httpexceptions import (
 from nefertari.utils import (
     process_fields, process_limit, _split, dictset,
     drop_reserved_params)
+
+from nefertari.utils.data import DocumentView
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
@@ -626,7 +628,7 @@ class BaseMixin(object):
             if key == pk_field:
                 continue
             if key in iter_columns:
-                self.update_iterables(new_value, key, unique=True, save=False)
+                self.update_iterables(new_value, key, save=False)
             else:
                 setattr(self, key, new_value)
         return self
@@ -669,8 +671,7 @@ class BaseMixin(object):
             session = cls.session_factory()
         for item in items:
             item.expire_parents(session)
-            
-        
+
     @classmethod
     def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
@@ -781,13 +782,14 @@ class BaseMixin(object):
 
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
+        _obj_type = kwargs.get('type', dictset)
         indexable = kwargs.get('indexable', False)
 
         if _depth is None:
             _depth = self._nesting_depth
         depth_reached = _depth is not None and _depth <= 0
 
-        _data = dictset()
+        _data = _obj_type()
         native_fields = self.__class__.native_fields()
 
         for field in native_fields:
@@ -816,9 +818,12 @@ class BaseMixin(object):
         kwargs["indexable"] = True
         return self.to_dict(**kwargs)
 
-    def update_iterables(self, params, attr, unique=False,
-                         value_type=None, save=True,
-                         request=None):
+    def get_view(self, **kwargs):
+        kwargs["_depth"] = 0
+        kwargs["type"] = DocumentView
+        return self.to_dict(**kwargs)
+
+    def update_iterables(self, params, attr, save=True, request=None):
         self._request = request
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
@@ -860,7 +865,7 @@ class BaseMixin(object):
                 self.save(request)
 
         def update_list(update_params):
-            final_value = getattr(self, attr, []) or []
+            final_value = getattr(self, attr) or []
             final_value = copy.deepcopy(final_value)
 
             if update_params is None or update_params == '':
@@ -874,7 +879,7 @@ class BaseMixin(object):
 
             positives, negatives = split_keys(keys)
 
-            if not (positives + negatives):
+            if not positives and not negatives:
                 raise JHTTPBadRequest('Missing params')
 
             parameters = {}
@@ -894,13 +899,12 @@ class BaseMixin(object):
 
             if len(positives) > 0:
                 sql_expression = "array_cat(" + sql_expression + ", :added_items)"
-                parameters["added_items"] = list(set(positives) - set(getattr(self, attr)))
+                parameters["added_items"] = list(set(positives) - set(final_value))
 
             expression = text(sql_expression).bindparams(**parameters)
             setattr(self, attr, expression)
 
-            if len(positives + negatives) > 0:
-                object_session(self).flush()
+            object_session(self).flush()
 
             if save:
                 self.save(request)
