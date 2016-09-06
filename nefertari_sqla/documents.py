@@ -308,6 +308,11 @@ class BaseMixin(object):
         ids = [str(id_) for id_ in ids if id_ is not None]
         field_obj = getattr(cls, id_name)
 
+        if not ids:
+            if first:
+                return None
+            return []
+
         query_set = cls.session_factory().query(cls).filter(field_obj.in_(ids))
 
         if params:
@@ -704,11 +709,14 @@ class BaseMixin(object):
                 pks = []
                 for item in items:
                     pks.append(getattr(item, pk_field))
-
-                primary_key = getattr(cls, pk_field)
-                upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
-                items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
-                updated_items = upd_queryset.all() if return_documents is True else []
+                if pks:
+                    primary_key = getattr(cls, pk_field)
+                    upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
+                    items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
+                    updated_items = upd_queryset.all() if return_documents is True else []
+                else:
+                    items_count = 0
+                    updated_items = []
             else:
                 items_count = len(items)
 
@@ -740,6 +748,8 @@ class BaseMixin(object):
 
     @classmethod
     def get_by_ids(cls, ids, **params):
+        if not ids:
+            return []
         query_set = cls.get_collection(**params)
         cls_id = getattr(cls, cls.pk_field())
         return query_set.from_self().filter(cls_id.in_(ids)).limit(len(ids))
