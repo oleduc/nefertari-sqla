@@ -35,6 +35,7 @@ def on_after_update(mapper, connection, target):
 
     # Reindex old one-to-one related object
     committed_state = attributes.instance_state(target).committed_state
+    columns = set()
     for field, value in committed_state.items():
         if isinstance(value, BaseDocument):
             obj_session = object_session(value)
@@ -43,11 +44,18 @@ def on_after_update(mapper, connection, target):
                 obj_session.expire(value)
             index_object(value, with_refs=False,
                          request=request)
+        else:
+            id_pos = field.rfind('_id')
+            if id_pos >= 0:
+                rel_name = field[:id_pos]
+                rel = mapper.relationships.get(rel_name, False)
+                if rel and any(c.name == field for c in rel.local_columns):
+                    columns.add(rel_name)
 
     # Reload `target` to get access to processed fields values
-    columns = [c.name for c in class_mapper(target.__class__).columns]
-    object_session(target).expire(target)
-    index_object(target, request=request, nested_only=True, with_refs=False)
+    columns = columns.union([c.name for c in class_mapper(target.__class__).columns])
+    object_session(target).expire(target, attribute_names=columns)
+    index_object(target, request=request, with_refs=False, nested_only=True)
 
     # Reindex the item's parents. This must be done after the child has been processes
     for parent, children_field in target.get_parent_documents(nested_only=True):
