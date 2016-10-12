@@ -6,6 +6,15 @@ relationship_fields = (
 )
 
 
+class SingletonMeta(type):
+    _instances = {}
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(SingletonMeta, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
 def is_relationship_field(field, model_cls):
     """ Determine if `field` of the `model_cls` is a relational
     field.

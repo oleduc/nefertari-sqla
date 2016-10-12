@@ -15,6 +15,9 @@ from .fixtures import memory_db, db_session, simple_model
 
 class TestDocumentHelpers(object):
 
+    def teardown_method(self, method):
+        docs.SessionHolder().restore_default()
+
     @patch.object(docs, 'BaseObject')
     def test_get_document_cls(self, mock_obj):
         mock_obj._decl_class_registry = {'foo': 'bar'}
@@ -70,6 +73,36 @@ class TestDocumentHelpers(object):
 
 
 class TestBaseMixin(object):
+
+    def teardown_method(self, method):
+        docs.SessionHolder().restore_default()
+
+    def test_appender_query_relations_not_indexed(self, memory_db, db_session):
+        class ChildC(docs.BaseDocument):
+            __tablename__ = 'childC'
+            id = fields.IdField(primary_key=True)
+            parent_id = fields.ForeignKeyField(
+                ref_document='ParentC', ref_column='parentC.id',
+                ref_column_type=fields.IdField)
+
+        class ParentC(docs.BaseDocument):
+            __tablename__ = 'parentC'
+            id = fields.IdField(primary_key=True)
+            children = fields.Relationship(
+                document='ChildC', backref_name='parentA',  uselist=True, lazy='dynamic')
+
+        connection = memory_db()
+        session = db_session(connection)
+        my_parent = ParentC(id=2)
+        my_child = ChildC(id=3, parent_id=2)
+        my_child2 = ChildC(id=4, parent_id=2)
+        session.add(my_parent)
+        session.add(my_child)
+        session.add(my_child2)
+        session.flush()
+        gen = my_parent.get_related_documents(nested_only=True)
+        res = tuple(gen)
+        assert len(res) == 0
 
     def test_get_es_mapping(self, memory_db):
         class MyModel(docs.BaseDocument):
@@ -251,7 +284,9 @@ class TestBaseMixin(object):
     @patch.object(docs, 'Session')
     def test_filter_objects_first(
             self, mock_sess, simple_model, memory_db):
+        docs.SessionHolder().set_session_factory(mock_sess)
         memory_db()
+
         simple_model.id.in_ = Mock()
         result = simple_model.filter_objects([Mock(id=4)], first=True)
 
@@ -259,11 +294,13 @@ class TestBaseMixin(object):
         assert mock_sess().query().filter.call_count == 1
         simple_model.id.in_.assert_called_once_with(['4'])
         assert result == mock_sess().query().filter().first()
+        docs.SessionHolder().restore_default()
 
     @patch.object(docs, 'Session')
     @patch.object(docs.BaseMixin, 'get_collection')
     def test_filter_objects_params(
             self, mock_get, mock_sess, simple_model, memory_db):
+        docs.SessionHolder().set_session_factory(mock_sess)
         memory_db()
         simple_model.id.in_ = Mock()
         result = simple_model.filter_objects(
@@ -277,6 +314,7 @@ class TestBaseMixin(object):
             query_set=query_set.from_self(),
             foo='bar')
         assert result == mock_get()
+        docs.SessionHolder().restore_default()
 
     def test_pop_iterables(self, memory_db):
         class MyModel(docs.BaseDocument):
@@ -434,12 +472,14 @@ class TestBaseMixin(object):
 
     @patch.object(docs, 'Session')
     def test_underscore_delete_many(self, mock_session):
+        docs.SessionHolder().set_session_factory(mock_session)
         foo = Mock()
         assert docs.BaseMixin._delete_many([foo]) == 1
         mock_session.assert_called_once_with()
         mock_session().delete.assert_called_with(foo)
         assert mock_session().delete.call_count == 1
         mock_session().flush.assert_called_once_with()
+        docs.SessionHolder().restore_default()
 
     @patch.object(docs, 'on_bulk_delete')
     @patch.object(docs.BaseMixin, '_clean_queryset')
@@ -459,10 +499,24 @@ class TestBaseMixin(object):
             docs.BaseMixin, [1, 2, 3], None)
         assert count == clean_items.delete()
 
-    def test_underscore_update_many(self):
-        item = Mock()
-        assert docs.BaseMixin._update_many([item], {'foo': 'bar'}) == {'count': 1, 'items': [item]}
-        item.update.assert_called_once_with({'foo': 'bar'}, None)
+    @patch.object(docs, 'Session')
+    def test_underscore_update_many(self, mock_session, memory_db):
+
+        class MyModel(docs.BaseDocument):
+            __tablename__ = 'mymodel'
+            name = fields.StringField(primary_key=True)
+            changes = fields.DictField()
+
+        memory_db()
+
+        docs.SessionHolder().set_session_factory(mock_session())
+        item = MyModel()
+        item.update = Mock()
+        result = MyModel._update_many([item], {'changes': {'bar': 'bee'}})
+        assert result['items'] == [item]
+        assert result['count'] == 1
+        item.update.assert_called_once_with({'changes': {'bar': 'bee'}}, None)
+        docs.SessionHolder().restore_default()
 
     @patch.object(docs.BaseMixin, '_clean_queryset')
     def test_underscore_update_many_query(self, mock_clean):
@@ -594,47 +648,39 @@ class TestBaseMixin(object):
         obj_session().flush.assert_called_once_with()
 
         # Nulify
-        myobj.update_iterables("", attr='settings', unique=False)
+        myobj.update_iterables("", attr='settings')
         assert myobj.settings == {}
-        myobj.update_iterables(None, attr='settings', unique=False)
+        myobj.update_iterables(None, attr='settings')
         assert myobj.settings == {}
 
     @patch.object(docs, 'object_session')
     def test_update_iterables_list(self, obj_session, memory_db):
+        """
+        Since update_iterables uses TextClause on list, and session obj is mocked, we can't properly test values
+        """
         class MyModel(docs.BaseDocument):
             __tablename__ = 'mymodel'
             id = fields.IdField(primary_key=True)
             settings = fields.ListField(item_type=fields.StringField)
+
         memory_db()
         myobj = MyModel(id=1)
+        myobj.save = Mock()
 
         # No existing value
         myobj.update_iterables(
-            {'setting1': '', 'setting2': '', '__boo': 'boo'},
+            ['setting1', 'setting2'],
             attr='settings', save=False)
-        assert not obj_session.called
-        assert sorted(myobj.settings) == ['setting1', 'setting2']
-
-        # New values to existing value
-        myobj.update_iterables(
-            {'-setting1': '', 'setting3': ''}, attr='settings',
-            unique=True, save=False)
-        assert not obj_session.called
-        assert sorted(myobj.settings) == ['setting2', 'setting3']
+        assert not myobj.save.called
+        assert obj_session(myobj).flush.called
 
         # With save
+        myobj = MyModel(id=2)
         myobj.update_iterables(
-            {'setting2': ''}, attr='settings', unique=False, save=True)
-        assert sorted(myobj.settings) == ['setting2', 'setting2', 'setting3']
-        obj_session.assert_called_once_with(myobj)
+            ['setting2'], attr='settings', save=True)
+        obj_session.assert_called_with(myobj)
         obj_session().add.assert_called_once_with(myobj)
-        obj_session().flush.assert_called_once_with()
-
-        # Nulify
-        myobj.update_iterables(None, attr='settings', unique=False)
-        assert myobj.settings == []
-        myobj.update_iterables("", attr='settings', unique=False)
-        assert myobj.settings == []
+        obj_session().flush.assert_called_with()
 
     def test_get_related_documents(self, memory_db):
 
@@ -713,6 +759,9 @@ class TestBaseMixin(object):
 
 
 class TestBaseDocument(object):
+
+    def teardown_method(self, method):
+        docs.SessionHolder().restore_default()
 
     # expire parent in current session for updating data if child was deleted
     def test_expire_parents(self, memory_db, db_session):
@@ -911,3 +960,46 @@ class TestGetCollection(object):
         assert queryset._nefertari_meta['total'] == 1
         assert queryset._nefertari_meta['start'] == 0
         assert queryset._nefertari_meta['fields'] == []
+
+
+class TestSessionHolder:
+
+    def test_session_holder_singletone(self):
+        holder1 = docs.SessionHolder()
+        holder2 = docs.SessionHolder()
+        assert holder1 == holder2
+
+    def test_returns_session_factory(self):
+        session_factory = docs.SessionHolder()
+        from sqlalchemy.orm.session import Session
+        session = session_factory()
+        assert isinstance(session, Session) == True
+
+    def test_ability_to_set_custom_session(self):
+        custom_session = Mock()
+
+        class CustomSessionFactory:
+            def __call__(self):
+                return custom_session
+
+        docs.SessionHolder().set_session_factory(CustomSessionFactory())
+        session_factory = docs.SessionHolder()
+        print(session_factory())
+        assert session_factory() == custom_session
+
+    def test_ability_to_reset_session_factory(self):
+        custom_session = Mock()
+
+        class CustomSessionFactory:
+            def __call__(self):
+                return custom_session
+
+        docs.SessionHolder().set_session_factory(CustomSessionFactory())
+        session_factory = docs.SessionHolder()
+        assert session_factory() == custom_session
+
+        docs.SessionHolder().restore_default()
+        session_factory = docs.SessionHolder()
+
+        from sqlalchemy.orm.session import Session
+        assert isinstance(session_factory(), Session) == True

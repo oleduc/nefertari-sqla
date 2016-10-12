@@ -14,6 +14,7 @@ from sqlalchemy.orm.query import Query
 from sqlalchemy.orm.properties import RelationshipProperty
 from pyramid_sqlalchemy import Session, BaseObject
 from sqlalchemy_utils.types.json import JSONType
+from sqlalchemy.orm.dynamic import AppenderQuery
 from sqlalchemy.inspection import inspect
 
 from nefertari.json_httpexceptions import (
@@ -21,11 +22,31 @@ from nefertari.json_httpexceptions import (
 from nefertari.utils import (
     process_fields, process_limit, _split, dictset,
     drop_reserved_params)
+
+from nefertari.utils.data import DocumentView
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
+from nefertari_sqla.utils import SingletonMeta
 
 log = logging.getLogger(__name__)
+
+
+class SessionHolder(metaclass=SingletonMeta):
+
+    def __init__(self):
+        # use pyramid_sqlaclhemy default session factory
+        self.session_factory = Session
+
+    def set_session_factory(self, factory):
+        self.session_factory = factory
+
+    def __call__(self):
+        return self.session_factory()
+
+    def restore_default(self):
+        from pyramid_sqlalchemy import Session
+        self.session_factory = Session
 
 
 def get_document_cls(name):
@@ -119,6 +140,8 @@ class BaseMixin(object):
     _hidden_fields = None
     _nested_relationships = ()
     _nesting_depth = 1
+
+    session_factory = SessionHolder()
 
     _type = property(lambda self: self.__class__.__name__)
 
@@ -285,7 +308,12 @@ class BaseMixin(object):
         ids = [str(id_) for id_ in ids if id_ is not None]
         field_obj = getattr(cls, id_name)
 
-        query_set = Session().query(cls).filter(field_obj.in_(ids))
+        if not ids:
+            if first:
+                return None
+            return []
+
+        query_set = cls.session_factory().query(cls).filter(field_obj.in_(ids))
 
         if params:
             params['query_set'] = query_set.from_self()
@@ -432,7 +460,7 @@ class BaseMixin(object):
         _raise_on_empty = params.pop('_raise_on_empty', False)
 
         if query_set is None:
-            query_set = Session().query(cls)
+            query_set = cls.session_factory().query(cls)
 
         # Remove any __ legacy instructions from this point on
         params = dictset({
@@ -605,7 +633,7 @@ class BaseMixin(object):
             if key == pk_field:
                 continue
             if key in iter_columns:
-                self.update_iterables(new_value, key, unique=True, save=False)
+                self.update_iterables(new_value, key, save=False)
             else:
                 setattr(self, key, new_value)
         return self
@@ -635,7 +663,7 @@ class BaseMixin(object):
             on_bulk_delete(cls, del_items, request)
             return del_count
         items_count = len(items)
-        session = Session()
+        session = cls.session_factory()
         for item in items:
             item._request = request
             session.delete(item)
@@ -645,11 +673,10 @@ class BaseMixin(object):
     @classmethod
     def bulk_expire_parents(cls, items, session=None):
         if session is None:
-            session = Session()
+            session = cls.session_factory()
         for item in items:
             item.expire_parents(session)
-            
-        
+
     @classmethod
     def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
@@ -682,11 +709,14 @@ class BaseMixin(object):
                 pks = []
                 for item in items:
                     pks.append(getattr(item, pk_field))
-
-                primary_key = getattr(cls, pk_field)
-                upd_queryset = Session().query(cls).filter(primary_key.in_(pks))
-                items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
-                updated_items = upd_queryset.all() if return_documents is True else []
+                if pks:
+                    primary_key = getattr(cls, pk_field)
+                    upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
+                    items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
+                    updated_items = upd_queryset.all() if return_documents is True else []
+                else:
+                    items_count = 0
+                    updated_items = []
             else:
                 items_count = len(items)
 
@@ -718,6 +748,8 @@ class BaseMixin(object):
 
     @classmethod
     def get_by_ids(cls, ids, **params):
+        if not ids:
+            return []
         query_set = cls.get_collection(**params)
         cls_id = getattr(cls, cls.pk_field())
         return query_set.from_self().filter(cls_id.in_(ids)).limit(len(ids))
@@ -750,6 +782,9 @@ class BaseMixin(object):
             value = encoder(value)
         elif isinstance(value, InstrumentedList):
             value = [encoder(val) for val in value]
+        elif isinstance(value,  AppenderQuery):
+            gen = value.values('id')
+            value = [item[0] for item in gen]
         elif hasattr(value, 'to_dict'):
             value = value.to_dict(_depth=_depth - 1)
 
@@ -757,13 +792,14 @@ class BaseMixin(object):
 
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
+        _obj_type = kwargs.get('type', dictset)
         indexable = kwargs.get('indexable', False)
 
         if _depth is None:
             _depth = self._nesting_depth
         depth_reached = _depth is not None and _depth <= 0
 
-        _data = dictset()
+        _data = _obj_type()
         native_fields = self.__class__.native_fields()
 
         for field in native_fields:
@@ -772,13 +808,15 @@ class BaseMixin(object):
             is_nested = field in self._nested_relationships
 
             # This is where we expand nested backrefs into a "name_nested"->Object and "name"->Pk indexed field
-            if indexable is True and is_nested is True and not depth_reached:
+            if indexable and is_nested and not depth_reached:
+                # Recursive step
                 _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
 
+            # Recursive step
             _data[field] = BaseMixin.get_encoded_field_value(
                 value,
                 _depth,
-                nest_objects=(is_nested and depth_reached is False and indexable is False)
+                nest_objects=(not indexable and is_nested and not depth_reached)
             )
 
         _data['_type'] = self._type
@@ -790,9 +828,12 @@ class BaseMixin(object):
         kwargs["indexable"] = True
         return self.to_dict(**kwargs)
 
-    def update_iterables(self, params, attr, unique=False,
-                         value_type=None, save=True,
-                         request=None):
+    def get_view(self, **kwargs):
+        kwargs["_depth"] = 0
+        kwargs["type"] = DocumentView
+        return self.to_dict(**kwargs)
+
+    def update_iterables(self, params, attr, save=True, request=None):
         self._request = request
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
@@ -834,7 +875,7 @@ class BaseMixin(object):
                 self.save(request)
 
         def update_list(update_params):
-            final_value = getattr(self, attr, []) or []
+            final_value = getattr(self, attr) or []
             final_value = copy.deepcopy(final_value)
 
             if update_params is None or update_params == '':
@@ -848,7 +889,7 @@ class BaseMixin(object):
 
             positives, negatives = split_keys(keys)
 
-            if not (positives + negatives):
+            if not positives and not negatives:
                 raise JHTTPBadRequest('Missing params')
 
             parameters = {}
@@ -868,13 +909,12 @@ class BaseMixin(object):
 
             if len(positives) > 0:
                 sql_expression = "array_cat(" + sql_expression + ", :added_items)"
-                parameters["added_items"] = list(set(positives) - set(getattr(self, attr)))
+                parameters["added_items"] = list(set(positives) - set(final_value))
 
             expression = text(sql_expression).bindparams(**parameters)
             setattr(self, attr, expression)
 
-            if len(positives + negatives) > 0:
-                object_session(self).flush()
+            object_session(self).flush()
 
             if save:
                 self.save(request)
@@ -902,8 +942,14 @@ class BaseMixin(object):
         for prop in backref_props:
             value = getattr(self, prop.key)
             # Do not index empty values
+
             if not value:
                 continue
+
+            # we don't use appender query as _nested_relationships
+            if isinstance(value, AppenderQuery):
+                continue
+
             if not isinstance(value, list):
                 value = [value]
             model_cls = value[0].__class__
@@ -981,7 +1027,7 @@ class BaseDocument(BaseObject, BaseMixin):
     def save(self, request=None):
         session = object_session(self)
         self._request = request
-        session = session or Session()
+        session = session or self.session_factory()
         try:
             session.add(self)
             session.flush()
