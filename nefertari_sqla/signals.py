@@ -6,7 +6,6 @@ from sqlalchemy.orm import object_session, class_mapper, attributes
 from pyramid_sqlalchemy import Session
 from nefertari.elasticsearch import ES
 
-from nefertari.utils import to_dicts
 
 log = logging.getLogger(__name__)
 
