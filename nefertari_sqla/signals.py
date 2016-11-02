@@ -120,6 +120,9 @@ event.listen(Session, 'after_bulk_update', on_bulk_update)
 
 
 class ESMetaclass(DeclarativeMeta):
+    # This allows us to use duck typing to test type without importing nefertari_sqla into nefertari
+    is_ESMetaclass = True
+
     def __init__(self, name, bases, attrs):
         self._index_enabled = True
         setup_es_signals_for(self)
