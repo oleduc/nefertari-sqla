@@ -3,7 +3,6 @@ import logging
 
 import six
 from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import (
     class_mapper, object_session, properties, attributes)
 from sqlalchemy.orm.collections import InstrumentedList
@@ -15,7 +14,6 @@ from sqlalchemy.orm.properties import RelationshipProperty
 from pyramid_sqlalchemy import Session, BaseObject
 from sqlalchemy_utils.types.json import JSONType
 from sqlalchemy.orm.dynamic import AppenderQuery
-from sqlalchemy.inspection import inspect
 
 from nefertari.json_httpexceptions import (
     JHTTPBadRequest, JHTTPNotFound, JHTTPConflict)
@@ -24,10 +22,11 @@ from nefertari.utils import (
     drop_reserved_params)
 
 from nefertari.utils.data import DocumentView
+from nefertari.utils import SingletonMeta
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
-from nefertari_sqla.utils import SingletonMeta
+
 
 log = logging.getLogger(__name__)
 
