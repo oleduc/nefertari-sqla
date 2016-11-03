@@ -6,7 +6,6 @@ from sqlalchemy.orm import object_session, class_mapper, attributes
 from pyramid_sqlalchemy import Session
 from nefertari.elasticsearch import ES
 
-from nefertari.utils import to_dicts
 
 log = logging.getLogger(__name__)
 
@@ -120,6 +119,9 @@ event.listen(Session, 'after_bulk_update', on_bulk_update)
 
 
 class ESMetaclass(DeclarativeMeta):
+    # This allows us to use duck typing to test type without importing nefertari_sqla into nefertari
+    is_ESMetaclass = True
+
     def __init__(self, name, bases, attrs):
         self._index_enabled = True
         setup_es_signals_for(self)
