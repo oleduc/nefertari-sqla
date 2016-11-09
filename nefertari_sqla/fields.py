@@ -68,6 +68,7 @@ class BaseField(Column):
             col_kw['type_'] = self._sqla_type_cls(*type_args, **type_kw)
             if 'type_' not in kwargs:
                 self._init_kwargs = self._kwargs_backup.copy()
+        self._email = None
         super(BaseField, self).__init__(**col_kw)
 
     def __setattr__(self, key, value):
@@ -95,6 +96,9 @@ class BaseField(Column):
             * type_kw: dict of type-specific kwargs
             * cleaned_kw: input kwargs cleaned from type-specific args
         """
+        if 'email' in kwargs:
+            self._email = kwargs.get('email')
+
         type_kw = dict()
         type_args = ()
         cleaned_kw = kwargs.copy()
@@ -236,6 +240,7 @@ class StringField(BaseField):
         'collation', 'convert_unicode', 'unicode_error',
         '_warn_on_bytestring', 'min_length', 'max_length')
     _es_multi_field = None
+    _email = None
 
     def process_type_args(self, kwargs):
         """
@@ -244,6 +249,9 @@ class StringField(BaseField):
         """
         if 'es_multi_field' in kwargs:
             self._es_multi_field = kwargs.get('es_multi_field')
+
+        if 'email' in kwargs:
+            self._email = kwargs.get('email')
 
         type_args, type_kw, cleaned_kw = super(
             StringField, self).process_type_args(kwargs)
@@ -299,6 +307,8 @@ class ListField(BaseField):
         """
         type_args, type_kw, cleaned_kw = super(
             ListField, self).process_type_args(kwargs)
+
+
 
         if 'item_type' in cleaned_kw:
             item_type_field = cleaned_kw['item_type']
