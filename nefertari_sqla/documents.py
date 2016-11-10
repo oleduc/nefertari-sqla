@@ -711,6 +711,7 @@ class BaseMixin(object):
                 if pks:
                     primary_key = getattr(cls, pk_field)
                     upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
+                    upd_queryset._request = request
                     items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
                     updated_items = upd_queryset.all() if return_documents is True else []
                 else:
