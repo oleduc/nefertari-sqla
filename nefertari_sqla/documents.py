@@ -177,8 +177,8 @@ class BaseMixin(object):
             if column_type not in types_map:
                 continue
 
-            if hasattr(column, '_email') and getattr(column, '_email'):
-                properties[name] = {'analyzer': 'email'}
+            if hasattr(column, '_custom_analyzer') and getattr(column, '_custom_analyzer'):
+                properties[name] = {'analyzer': getattr(column, '_custom_analyzer')}
                 properties[name].update(types_map[column_type])
                 continue
 
