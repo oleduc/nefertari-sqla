@@ -167,7 +167,6 @@ class BaseMixin(object):
         mapper = class_mapper(cls)
         columns = {c.name: c for c in mapper.columns}
         relationships = {r.key: r for r in mapper.relationships}
-
         for name, column in columns.items():
             column_type = column.type
             if isinstance(column_type, types.ChoiceArray):

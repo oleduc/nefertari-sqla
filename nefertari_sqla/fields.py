@@ -57,7 +57,7 @@ class BaseField(Column):
         """
         if not hasattr(self, '_kwargs_backup'):
             self._kwargs_backup = kwargs.copy()
-
+        self._custom_analyzer = None
         type_args, type_kw, cleaned_kw = self.process_type_args(kwargs)
         col_kw = self.process_column_args(cleaned_kw)
         # Column proxy is created by declarative extension
@@ -68,7 +68,6 @@ class BaseField(Column):
             col_kw['type_'] = self._sqla_type_cls(*type_args, **type_kw)
             if 'type_' not in kwargs:
                 self._init_kwargs = self._kwargs_backup.copy()
-        self._custom_analyzer = None
         super(BaseField, self).__init__(**col_kw)
 
     def __setattr__(self, key, value):
@@ -303,8 +302,6 @@ class ListField(BaseField):
         """
         type_args, type_kw, cleaned_kw = super(
             ListField, self).process_type_args(kwargs)
-
-
 
         if 'item_type' in cleaned_kw:
             item_type_field = cleaned_kw['item_type']
