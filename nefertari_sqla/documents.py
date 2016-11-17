@@ -167,14 +167,20 @@ class BaseMixin(object):
         mapper = class_mapper(cls)
         columns = {c.name: c for c in mapper.columns}
         relationships = {r.key: r for r in mapper.relationships}
-
         for name, column in columns.items():
             column_type = column.type
             if isinstance(column_type, types.ChoiceArray):
                 column_type = column_type.impl.item_type
             column_type = type(column_type)
+
             if column_type not in types_map:
                 continue
+
+            if getattr(column, '_custom_analyzer', False):
+                properties[name] = {'analyzer': column._custom_analyzer}
+                properties[name].update(types_map[column_type])
+                continue
+
             properties[name] = types_map[column_type]
 
             if hasattr(column, "_es_multi_field") and getattr(column, "_es_multi_field"):
@@ -187,6 +193,7 @@ class BaseMixin(object):
                     properties[name]["fields"][multi_field_name].update(types_map[column_type])
 
         for name, column in relationships.items():
+
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
                 nested_substitutions.append(name)
@@ -202,7 +209,6 @@ class BaseMixin(object):
             properties[name] = column_type
 
         properties['_pk'] = {'type': 'string'}
-
         return mapping, nested_substitutions
 
     @classmethod
