@@ -57,7 +57,7 @@ class BaseField(Column):
         """
         if not hasattr(self, '_kwargs_backup'):
             self._kwargs_backup = kwargs.copy()
-
+        self._custom_analyzer = None
         type_args, type_kw, cleaned_kw = self.process_type_args(kwargs)
         col_kw = self.process_column_args(cleaned_kw)
         # Column proxy is created by declarative extension
@@ -95,6 +95,8 @@ class BaseField(Column):
             * type_kw: dict of type-specific kwargs
             * cleaned_kw: input kwargs cleaned from type-specific args
         """
+        self._custom_analyzer = kwargs.get('custom_analyzer', False) or self._custom_analyzer
+
         type_kw = dict()
         type_args = ()
         cleaned_kw = kwargs.copy()
