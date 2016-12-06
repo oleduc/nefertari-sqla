@@ -11,8 +11,10 @@ env:
 build:
 
     ci:
-      - if [ "$BRANCH" == "develop" ]; then pip install -r requirements.dev; fi
-      - if [ "$BRANCH" != "develop" ]; then pip install -r requirements.txt; fi
+      - pip install --upgrade pip
+      - pip install -r requirements.txt
+      #- if [ "$BRANCH" == "develop" ]; then pip install -r requirements.dev; fi
+      #- if [ "$BRANCH" != "develop" ]; then pip install -r requirements.txt; fi
       - pip install -U pytest
       - mkdir -p shippable/testresults
       - mkdir -p shippable/codecoverage
