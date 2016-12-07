@@ -1,11 +1,8 @@
 mock
-
 pytest
 pytest-cov
 releases
 sphinx
-sphinxcontrib-fulltoc
-webtest
 
 git+https://github.com/geniusproject/nefertari.git@develop#egg=nefertari
 
