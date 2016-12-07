@@ -12,7 +12,7 @@ build:
 
     ci:
       - apt-get update
-      - apt-get install ibpq-dev python3-dev
+      - apt-get install python3-dev #ibpq-dev
       - pip install -r requirements.dev
       #- if [ "$BRANCH" == "develop" ]; then pip install -r requirements.dev; fi
       #- if [ "$BRANCH" != "develop" ]; then pip install -r requirements.txt; fi
