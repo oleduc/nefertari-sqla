@@ -11,8 +11,8 @@ env:
 build:
 
     ci:
-      - sleep 9999999999999999
-      - pip install --upgrade pip
+      - apt-get update
+      - apt get install ibpq-dev python3-dev
       - pip install -r requirements.dev
       #- if [ "$BRANCH" == "develop" ]; then pip install -r requirements.dev; fi
       #- if [ "$BRANCH" != "develop" ]; then pip install -r requirements.txt; fi
