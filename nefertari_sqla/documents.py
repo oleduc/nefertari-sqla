@@ -8,7 +8,7 @@ from sqlalchemy.orm import (
 from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy.exc import (
     InvalidRequestError, IntegrityError, DataError)
-from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound, DetachedInstanceError
 from sqlalchemy.orm.query import Query
 from sqlalchemy.orm.properties import RelationshipProperty
 from pyramid_sqlalchemy import Session, BaseObject
@@ -747,8 +747,12 @@ class BaseMixin(object):
 
     def __repr__(self):
         pk_field = self.pk_field()
+        try:
+            pk = getattr(self, pk_field)
+        except DetachedInstanceError:
+            pk = '`detached`'
         parts = [
-            '{}={}'.format(pk_field, getattr(self, pk_field)),
+            '{}={}'.format(pk_field, pk),
         ]
         return '<{}: {}>'.format(self.__class__.__name__, ', '.join(parts))
 
@@ -824,6 +828,10 @@ class BaseMixin(object):
                 _depth,
                 nest_objects=(not indexable and is_nested and not depth_reached)
             )
+
+        if hasattr(self, '_injected_fields'):
+            for field in self._injected_fields:
+                _data[field] = getattr(self, field, None)
 
         _data['_type'] = self._type
         _data['_pk'] = str(getattr(self, self.pk_field()))
