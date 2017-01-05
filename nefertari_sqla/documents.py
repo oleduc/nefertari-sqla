@@ -825,6 +825,10 @@ class BaseMixin(object):
                 nest_objects=(not indexable and is_nested and not depth_reached)
             )
 
+        if hasattr(self, '_injected_fields'):
+            for field in self._injected_fields:
+                _data[field] = getattr(self, field, None)
+
         _data['_type'] = self._type
         _data['_pk'] = str(getattr(self, self.pk_field()))
 
