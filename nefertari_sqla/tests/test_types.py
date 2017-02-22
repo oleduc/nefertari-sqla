@@ -196,6 +196,12 @@ class TestChoiceArray(object):
             item_type=fields.StringField, choices='foo')
         assert field.choices == ['foo']
 
+    def test_choice_dict(self):
+        field = types.ChoiceArray(
+            item_type=fields.StringField, choices={'key': 'value', 'key2': 'value2'}
+        )
+        assert sorted(field.choices) == sorted(['key', 'key2'])
+
     def test_validate_choices_no_choices(self):
         field = types.ChoiceArray(item_type=fields.StringField)
         assert field.choices is None
