@@ -120,10 +120,6 @@ class Choice(types.TypeDecorator):
 
     def __init__(self, *args, **kwargs):
         self.choices = kwargs.pop('choices', ())
-        print(self.choices)
-        import pytest
-        if isinstance(self.choices, dict):
-            pytest.set_trace()
         if not isinstance(self.choices, (list, tuple, set)):
             self.choices = [self.choices]
         super(Choice, self).__init__(*args, **kwargs)
