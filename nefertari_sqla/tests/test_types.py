@@ -145,6 +145,11 @@ class TestChoice(object):
         except ValueError:
             raise Exception('Unexpected error')
 
+    def test_dict_in_choices(self):
+        field = types.Choice(choices={'key1': 'value1', 'key2': 'value2'})
+        assert sorted(field.choices) == sorted(['key1', 'key2'])
+
+
     def test_choices_not_sequence(self):
         field = types.Choice(choices='foo')
         try:

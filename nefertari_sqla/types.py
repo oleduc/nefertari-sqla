@@ -120,7 +120,10 @@ class Choice(types.TypeDecorator):
 
     def __init__(self, *args, **kwargs):
         self.choices = kwargs.pop('choices', ())
-        if not isinstance(self.choices, (list, tuple, set)):
+
+        if isinstance(self.choices, dict):
+            self.choices = list(self.choices.keys())
+        elif not isinstance(self.choices, (list, tuple, set)):
             self.choices = [self.choices]
         super(Choice, self).__init__(*args, **kwargs)
 
