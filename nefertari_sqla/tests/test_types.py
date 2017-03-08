@@ -199,7 +199,7 @@ class TestChoiceArray(object):
     def test_choices_not_sequence(self):
         field = types.ChoiceArray(
             item_type=fields.StringField, choices='foo')
-        assert field.choices == ['foo']
+        assert field.choices == ('foo',)
 
     def test_choice_dict(self):
         field = types.ChoiceArray(
