@@ -25,6 +25,7 @@ from nefertari.utils.data import DocumentView
 from nefertari.utils import SingletonMeta
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
+from .utils import is_indexable, get_backref_props
 from . import types
 
 
@@ -781,8 +782,8 @@ class BaseMixin(object):
             null_values[name] = value
         return null_values
 
-    @staticmethod
-    def get_encoded_field_value(value, _depth, nest_objects=False):
+    @classmethod
+    def get_encoded_field_value(cls, value, _depth, nest_objects=False):
         if nest_objects:
             encoder = lambda v: v.to_dict(_depth=_depth - 1)
         else:
@@ -800,6 +801,39 @@ class BaseMixin(object):
 
         return value
 
+    @classmethod
+    def get_non_indexable_fields(cls):
+        backref_props = get_backref_props(cls)
+
+        def filter_func(f):
+            return not is_indexable(f)
+
+        fields = [column.name for column in filter(filter_func, class_mapper(cls).columns)]
+        fields.extend([prop.key for prop in filter(filter_func, backref_props)])
+
+        return fields
+
+    def get_reverse_non_indexable_fields(self):
+        non_indexable_fields = []
+        related_items = [(getattr(self, item.key), item) for item in get_backref_props(self.__class__)]
+
+        for related_item, relation in related_items:
+            if isinstance(related_item, list):
+                for item in related_item:
+
+                    if relation.back_populates in item.get_non_indexable_fields():
+                        non_indexable_fields.append(relation.key)
+            else:
+                if isinstance(related_item, AppenderQuery):
+                    related_item = related_item.column_descriptions[0]['type']
+
+                if not related_item:
+                    continue
+
+                if relation.back_populates in related_item.get_non_indexable_fields():
+                    non_indexable_fields.append(relation.key)
+        return non_indexable_fields
+
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
         _obj_type = kwargs.get('type', dictset)
@@ -810,7 +844,11 @@ class BaseMixin(object):
         depth_reached = _depth is not None and _depth <= 0
 
         _data = _obj_type()
-        native_fields = self.__class__.native_fields()
+
+        if indexable:
+            native_fields = set(self.__class__.native_fields()) - set(self.get_non_indexable_fields())
+        else:
+            native_fields = self.__class__.native_fields()
 
         for field in native_fields:
             value = getattr(self, field, None)
@@ -820,10 +858,10 @@ class BaseMixin(object):
             # This is where we expand nested backrefs into a "name_nested"->Object and "name"->Pk indexed field
             if indexable and is_nested and not depth_reached:
                 # Recursive step
-                _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
+                _data[field + "_nested"] = self.get_encoded_field_value(value, _depth, nest_objects=True)
 
             # Recursive step
-            _data[field] = BaseMixin.get_encoded_field_value(
+            _data[field] = self.get_encoded_field_value(
                 value,
                 _depth,
                 nest_objects=(not indexable and is_nested and not depth_reached)
@@ -953,10 +991,15 @@ class BaseMixin(object):
         backref_props = [p for p in iter_props
                          if isinstance(p, properties.RelationshipProperty)]
 
+        non_indexable_fields = self.get_reverse_non_indexable_fields()
+
         for prop in backref_props:
             value = getattr(self, prop.key)
-            # Do not index empty values
 
+            if prop.key in non_indexable_fields:
+                continue
+
+            # Do not index empty values
             if not value:
                 continue
 
@@ -976,13 +1019,18 @@ class BaseMixin(object):
 
             yield (model_cls, value)
 
-    def get_parent_documents(self, nested_only=False):
+    def get_parent_documents(self, with_index=True, nested_only=False):
         iter_props = class_mapper(self.__class__).iterate_properties
         backref_props = [p for p in iter_props
                          if isinstance(p, properties.RelationshipProperty)]
 
+        non_indexable_fields = [field for field in self.get_non_indexable_fields()]
+
         for prop in backref_props:
             value = getattr(self, prop.key)
+
+            if prop.key in non_indexable_fields:
+                continue
 
             # Backref don't have _init_kwargs
             if hasattr(prop, "_init_kwargs"):
