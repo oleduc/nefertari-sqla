@@ -782,8 +782,8 @@ class BaseMixin(object):
             null_values[name] = value
         return null_values
 
-    @classmethod
-    def get_encoded_field_value(cls, value, _depth, nest_objects=False):
+    @staticmethod
+    def get_encoded_field_value(value, _depth, nest_objects=False):
         if nest_objects:
             encoder = lambda v: v.to_dict(_depth=_depth - 1)
         else:
@@ -858,10 +858,10 @@ class BaseMixin(object):
             # This is where we expand nested backrefs into a "name_nested"->Object and "name"->Pk indexed field
             if indexable and is_nested and not depth_reached:
                 # Recursive step
-                _data[field + "_nested"] = self.get_encoded_field_value(value, _depth, nest_objects=True)
+                _data[field + "_nested"] = BaseMixin.get_encoded_field_value(value, _depth, nest_objects=True)
 
             # Recursive step
-            _data[field] = self.get_encoded_field_value(
+            _data[field] = BaseMixin.get_encoded_field_value(
                 value,
                 _depth,
                 nest_objects=(not indexable and is_nested and not depth_reached)
