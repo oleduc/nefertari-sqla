@@ -984,10 +984,7 @@ class BaseMixin(object):
             results only contain data for models on which current model
             and field are nested.
         """
-        iter_props = class_mapper(self.__class__).iterate_properties
-        backref_props = [p for p in iter_props
-                         if isinstance(p, properties.RelationshipProperty)]
-
+        backref_props = get_backref_props(self.__class__)
         non_indexable_fields = self.get_reverse_non_indexable_fields()
 
         for prop in backref_props:
@@ -1017,9 +1014,7 @@ class BaseMixin(object):
             yield (model_cls, value)
 
     def get_parent_documents(self, nested_only=False):
-        iter_props = class_mapper(self.__class__).iterate_properties
-        backref_props = [p for p in iter_props
-                         if isinstance(p, properties.RelationshipProperty)]
+        backref_props = get_backref_props(self.__class__)
 
         non_indexable_fields = [field for field in self.get_non_indexable_fields()]
 
