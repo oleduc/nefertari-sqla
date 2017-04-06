@@ -845,10 +845,7 @@ class BaseMixin(object):
 
         _data = _obj_type()
 
-        if indexable:
-            native_fields = set(self.__class__.native_fields()) - set(self.get_non_indexable_fields())
-        else:
-            native_fields = self.__class__.native_fields()
+        native_fields = set(self.__class__.native_fields()) - set(self.get_non_indexable_fields())
 
         for field in native_fields:
             value = getattr(self, field, None)
