@@ -820,9 +820,9 @@ class BaseMixin(object):
         for related_item, relation in related_items:
             if isinstance(related_item, list):
                 for item in related_item:
-
                     if relation.back_populates in item.get_non_indexable_fields():
                         fields.append(relation.key)
+                        break
             else:
                 if isinstance(related_item, AppenderQuery):
                     related_item = related_item.column_descriptions[0]['type']
