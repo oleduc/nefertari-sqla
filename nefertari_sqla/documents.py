@@ -814,7 +814,7 @@ class BaseMixin(object):
         return fields
 
     def get_reverse_non_indexable_fields(self):
-        non_indexable_fields = []
+        fields = []
         related_items = [(getattr(self, item.key), item) for item in get_backref_props(self.__class__)]
 
         for related_item, relation in related_items:
@@ -822,7 +822,7 @@ class BaseMixin(object):
                 for item in related_item:
 
                     if relation.back_populates in item.get_non_indexable_fields():
-                        non_indexable_fields.append(relation.key)
+                        fields.append(relation.key)
             else:
                 if isinstance(related_item, AppenderQuery):
                     related_item = related_item.column_descriptions[0]['type']
@@ -831,8 +831,8 @@ class BaseMixin(object):
                     continue
 
                 if relation.back_populates in related_item.get_non_indexable_fields():
-                    non_indexable_fields.append(relation.key)
-        return non_indexable_fields
+                    fields.append(relation.key)
+        return fields
 
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
@@ -1019,7 +1019,7 @@ class BaseMixin(object):
 
             yield (model_cls, value)
 
-    def get_parent_documents(self, with_index=True, nested_only=False):
+    def get_parent_documents(self, nested_only=False):
         iter_props = class_mapper(self.__class__).iterate_properties
         backref_props = [p for p in iter_props
                          if isinstance(p, properties.RelationshipProperty)]
