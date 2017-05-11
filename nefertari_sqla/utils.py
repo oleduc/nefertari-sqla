@@ -1,5 +1,5 @@
 from sqlalchemy.orm.properties import RelationshipProperty
-from sqlalchemy.orm import class_mapper
+from sqlalchemy.orm import class_mapper, properties
 
 relationship_fields = (
     RelationshipProperty,
@@ -29,6 +29,17 @@ def get_relationship_cls(field, model_cls):
     relationships = {r.key: r for r in mapper.relationships}
     field_obj = relationships[field]
     return field_obj.mapper.class_
+
+
+def is_indexable(field):
+    return getattr(field, 'es_index', True)
+
+
+def get_backref_props(cls):
+    iter_props = class_mapper(cls).iterate_properties
+    backref_props = [p for p in iter_props
+                     if isinstance(p, properties.RelationshipProperty)]
+    return backref_props
 
 
 class FieldsQuerySet(list):
