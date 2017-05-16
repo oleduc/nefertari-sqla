@@ -22,7 +22,7 @@ from nefertari.utils import (
     drop_reserved_params)
 
 from nefertari.utils.data import DocumentView
-from nefertari.utils import SingletonMeta, ThreadLocalSingletonMeta
+from nefertari.utils import ThreadLocalSingletonMeta
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from . import types
