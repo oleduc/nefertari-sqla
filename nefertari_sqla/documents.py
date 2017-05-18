@@ -22,7 +22,7 @@ from nefertari.utils import (
     drop_reserved_params)
 
 from nefertari.utils.data import DocumentView
-from nefertari.utils import SingletonMeta
+from nefertari.utils import ThreadLocalSingletonMeta
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from .utils import is_indexable, get_backref_props
@@ -32,7 +32,7 @@ from . import types
 log = logging.getLogger(__name__)
 
 
-class SessionHolder(metaclass=SingletonMeta):
+class SessionHolder(metaclass=ThreadLocalSingletonMeta):
 
     def __init__(self):
         # use pyramid_sqlaclhemy default session factory
@@ -675,7 +675,7 @@ class BaseMixin(object):
             session.delete(item)
         session.flush()
         return items_count
-    
+
     @classmethod
     def bulk_expire_parents(cls, items, session=None):
         if session is None:
