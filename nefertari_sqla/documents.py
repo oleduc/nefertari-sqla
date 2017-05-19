@@ -22,7 +22,7 @@ from nefertari.utils import (
     drop_reserved_params)
 
 from nefertari.utils.data import DocumentView
-from nefertari.utils import ThreadLocalSingletonMeta
+from nefertari.utils import ThreadLocalSingleton
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
 from .utils import is_indexable, get_backref_props
@@ -32,7 +32,7 @@ from . import types
 log = logging.getLogger(__name__)
 
 
-class SessionHolder(ThreadLocalSingletonMeta):
+class SessionHolder(ThreadLocalSingleton):
 
     def __init__(self):
         # use pyramid_sqlaclhemy default session factory
