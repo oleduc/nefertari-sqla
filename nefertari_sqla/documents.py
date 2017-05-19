@@ -32,7 +32,7 @@ from . import types
 log = logging.getLogger(__name__)
 
 
-class SessionHolder(metaclass=ThreadLocalSingletonMeta):
+class SessionHolder(ThreadLocalSingletonMeta):
 
     def __init__(self):
         # use pyramid_sqlaclhemy default session factory
