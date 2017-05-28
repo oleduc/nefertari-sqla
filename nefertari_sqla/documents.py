@@ -2,7 +2,7 @@ import copy
 import logging
 
 import six
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from sqlalchemy.orm import (
     class_mapper, object_session, properties, attributes)
 from sqlalchemy.orm.collections import InstrumentedList
@@ -1068,6 +1068,72 @@ class BaseMixin(object):
     def _is_created(self):
         state = attributes.instance_state(self)
         return not state.persistent
+
+    @classmethod
+    def get_readonly_item(cls, pkey_value=None, query=None, **params):
+        columns = cls.get_columns()
+
+        if isinstance(query, Query):
+            return cls._wrap_read_only(query.values(*columns))
+
+        if pkey_value:
+            return cls._wrap_read_only(
+                cls.session_factory().query(cls).filter_by(**{cls.pk_field(): pkey_value}).values(*columns)
+            )
+        if params:
+            return cls._wrap_read_only(
+                cls.session_factory().query(cls).filter_by(**params).values(*columns)
+            )
+        raise NoResultFound('There is no results according to passed params')
+
+    @classmethod
+    def get_columns(cls):
+        inst = inspect(cls)
+        return [c_attr.key for c_attr in inst.mapper.columns]
+
+    @classmethod
+    def _wrap_read_only(cls, gen):
+        read_only_cls = cls._get_readonly_cls()
+        packed_value = tuple(gen)
+        if packed_value:
+            single_value, *_ = packed_value
+            return read_only_cls(item=single_value)
+        return None
+
+    @classmethod
+    def get_readonly_collection(cls, query=None, **params):
+        if not query and params:
+            query = cls.session_factory().query(cls).filter_by(**params)
+        else:
+            statement = text('SELECT * FROM public.%s' % cls.__tablename__)
+            query = cls.session_factory().query(cls).from_statement(statement)
+        return cls._wrap_read_only_collection(query.values(*cls.get_columns()))
+
+    # proxies generator
+    @classmethod
+    def _wrap_read_only_collection(cls, gen):
+        read_only_cls = cls._get_readonly_cls()
+        for item in gen:
+            yield read_only_cls(**{column: item[index] for index, column in enumerate(cls.get_columns())})
+
+    @classmethod
+    def _get_readonly_cls(cls):
+        return type(cls.__name__, (ReadOnlyObject, ), {'pk_field': cls.pk_field,
+                                                       'pk_field_type': cls.pk_field_type})
+
+
+class ReadOnlyObject:
+
+    def __init__(self, item=None, **kwargs):
+        if item:
+            keys = item.keys()
+            for index, value in enumerate(item):
+                self.__dict__[keys[index]] = value
+
+        else:
+            self.__dict__.update(kwargs)
+
+
 
 
 class BaseDocument(BaseObject, BaseMixin):
