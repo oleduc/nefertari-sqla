@@ -1070,11 +1070,8 @@ class BaseMixin(object):
         return not state.persistent
 
     @classmethod
-    def get_readonly_item(cls, pkey_value=None, query=None, **params):
+    def get_readonly_item(cls, pkey_value=None, **params):
         columns = cls.get_columns()
-
-        if isinstance(query, Query):
-            return cls._wrap_read_only(query.values(*columns))
 
         if pkey_value:
             return cls._wrap_read_only(
@@ -1101,8 +1098,8 @@ class BaseMixin(object):
         return None
 
     @classmethod
-    def get_readonly_collection(cls, query=None, **params):
-        if not query and params:
+    def get_readonly_collection(cls, **params):
+        if params:
             query = cls.session_factory().query(cls).filter_by(**params)
         else:
             statement = text('SELECT * FROM public.%s' % cls.__tablename__)
@@ -1132,8 +1129,6 @@ class ReadOnlyObject:
 
         else:
             self.__dict__.update(kwargs)
-
-
 
 
 class BaseDocument(BaseObject, BaseMixin):
