@@ -1081,19 +1081,19 @@ class BaseMixin(object):
             return cls._wrap_read_only(
                 cls.session_factory().query(cls).filter_by(**params).values(*columns)
             )
-        raise NoResultFound('There is no results according to passed params')
+        raise TypeError('Missing one of required arguments: pkey_value or **params')
 
     @classmethod
     def get_columns(cls):
-        inst = inspect(cls)
-        return [c_attr.key for c_attr in inst.mapper.columns]
+        inspected = inspect(cls)
+        return [c_attr.key for c_attr in inspected.mapper.columns]
 
     @classmethod
     def _wrap_read_only(cls, gen):
         read_only_cls = cls._get_readonly_cls()
-        packed_value = tuple(gen)
-        if packed_value:
-            single_value, *_ = packed_value
+        single_value = next(gen, None)
+
+        if single_value:
             return read_only_cls(item=single_value)
         return None
 
@@ -1115,13 +1115,21 @@ class BaseMixin(object):
 
     @classmethod
     def _get_readonly_cls(cls):
-        return type(cls.__name__, (ReadOnlyObject, ), {'pk_field': cls.pk_field,
-                                                       'pk_field_type': cls.pk_field_type})
+        def _build(item=None, **kwargs):
+            return ReadOnlyObject(cls.pk_field(), cls.pk_field_type(), item=item, **kwargs)
+        return _build
+
+    @classmethod
+    def to_readonly_instance(cls, instance):
+        readonly_cls = cls._get_readonly_cls()
+        return readonly_cls(**instance.to_dict())
 
 
 class ReadOnlyObject:
+    def __init__(self, pk_field, pk_field_type, item=None, **kwargs):
+        self._pk_field = pk_field
+        self._pk_field_type = pk_field_type
 
-    def __init__(self, item=None, **kwargs):
         if item:
             keys = item.keys()
             for index, value in enumerate(item):
@@ -1129,6 +1137,12 @@ class ReadOnlyObject:
 
         else:
             self.__dict__.update(kwargs)
+
+    def pk_field(self):
+        return self._pk_field
+
+    def pk_field_type(self):
+        return self._pk_field_type
 
 
 class BaseDocument(BaseObject, BaseMixin):
