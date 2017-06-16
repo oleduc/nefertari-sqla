@@ -1215,3 +1215,12 @@ class ESBaseDocument(six.with_metaclass(ESMetaclass, BaseDocument)):
     should be abstract as well (__abstract__ = True).
     """
     __abstract__ = True
+
+
+def reload_document(_type, _id):
+    document_cls = get_document_cls(_type)
+    try:
+        document = document_cls.get_item(**{document_cls.pk_field(): _id})
+        return document.to_indexable_dict()
+    except NoResultFound:
+        return None
