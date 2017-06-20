@@ -496,7 +496,7 @@ class TestBaseMixin(object):
         clean_items.delete.assert_called_once_with(
             synchronize_session=False)
         mock_on_bulk.assert_called_once_with(
-            docs.BaseMixin, [1, 2, 3], None)
+            docs.BaseMixin, [1, 2, 3])
         assert count == clean_items.delete()
 
     @patch.object(docs, 'Session')
@@ -515,7 +515,7 @@ class TestBaseMixin(object):
         result = MyModel._update_many([item], {'changes': {'bar': 'bee'}})
         assert result['items'] == [item]
         assert result['count'] == 1
-        item.update.assert_called_once_with({'changes': {'bar': 'bee'}}, None)
+        item.update.assert_called_once_with({'changes': {'bar': 'bee'}})
         docs.SessionHolder().restore_default()
 
     @patch.object(docs.BaseMixin, '_clean_queryset')

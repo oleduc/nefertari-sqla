@@ -28,7 +28,6 @@ def on_after_insert(mapper, connection, target):
 
 
 def on_after_update(mapper, connection, target):
-    request = getattr(target, '_request', None)
     from .documents import BaseDocument
 
     # Reindex old one-to-one related object
@@ -40,8 +39,7 @@ def on_after_update(mapper, connection, target):
             # Make sure object is not updated yet
             if not obj_session.is_modified(value):
                 obj_session.expire(value)
-            index_object(value, with_refs=False,
-                         request=request)
+            index_object(value, with_refs=False)
         else:
             id_pos = field.rfind('_id')
             if id_pos >= 0:
@@ -53,7 +51,7 @@ def on_after_update(mapper, connection, target):
     # Reload `target` to get access to processed fields values
     columns = columns.union([c.name for c in class_mapper(target.__class__).columns])
     object_session(target).expire(target, attribute_names=columns)
-    index_object(target, request=request, with_refs=False, nested_only=True)
+    index_object(target, with_refs=False, nested_only=True)
 
     # Reindex the item's parents. This must be done after the child has been processes
     for parent, children_field in target.get_parent_documents(nested_only=True):
@@ -89,7 +87,7 @@ def on_bulk_update(update_context):
     es.bulk_index_relations(objects, nested_only=True)
 
 
-def on_bulk_delete(model_cls, objects, request=None):
+def on_bulk_delete(model_cls, objects):
     if not getattr(model_cls, '_index_enabled', False):
         return
 
