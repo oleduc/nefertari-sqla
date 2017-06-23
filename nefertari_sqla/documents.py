@@ -878,6 +878,12 @@ class BaseMixin(object):
         kwargs["type"] = DocumentView
         return self.to_dict(**kwargs)
 
+    def refresh(self):
+        session = object_session(self) or self.session_factory()
+
+        if self not in session:
+            session.add(self)
+
     def update_iterables(self, params, attr, save=True):
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
@@ -1213,6 +1219,7 @@ def reload_document(_type, _id):
     document_cls = get_document_cls(_type)
     try:
         document = document_cls.get_item(**{document_cls.pk_field(): _id})
-        return document.to_indexable_dict()
+        indexable_doc = document.to_indexable_dict()
+        return indexable_doc
     except NoResultFound:
         return None
