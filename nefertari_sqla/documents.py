@@ -1219,7 +1219,6 @@ def reload_document(_type, _id):
     document_cls = get_document_cls(_type)
     try:
         document = document_cls.get_item(**{document_cls.pk_field(): _id})
-        indexable_doc = document.to_indexable_dict()
-        return indexable_doc
+        return document.to_indexable_dict()
     except NoResultFound:
         return None
