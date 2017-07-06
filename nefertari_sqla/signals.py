@@ -20,16 +20,14 @@ def index_object(obj, with_refs=True, **kwargs):
 def on_after_insert(mapper, connection, target):
     # Reload `target` to get access to back references and processed
     # fields values
-    request = getattr(target, '_request', None)
     model_cls = target.__class__
     pk_field = target.pk_field()
     reloaded = model_cls.get_item(
         **{pk_field: getattr(target, pk_field)})
-    index_object(reloaded, request=request)
+    index_object(reloaded)
 
 
 def on_after_update(mapper, connection, target):
-    request = getattr(target, '_request', None)
     from .documents import BaseDocument
 
     # Reindex old one-to-one related object
@@ -41,8 +39,7 @@ def on_after_update(mapper, connection, target):
             # Make sure object is not updated yet
             if not obj_session.is_modified(value):
                 obj_session.expire(value)
-            index_object(value, with_refs=False,
-                         request=request)
+            index_object(value, with_refs=False)
         else:
             id_pos = field.rfind('_id')
             if id_pos >= 0:
@@ -54,7 +51,7 @@ def on_after_update(mapper, connection, target):
     # Reload `target` to get access to processed fields values
     columns = columns.union([c.name for c in class_mapper(target.__class__).columns])
     object_session(target).expire(target, attribute_names=columns)
-    index_object(target, request=request, with_refs=False, nested_only=True)
+    index_object(target, with_refs=False, nested_only=True)
 
     # Reindex the item's parents. This must be done after the child has been processes
     for parent, children_field in target.get_parent_documents(nested_only=True):
@@ -65,18 +62,15 @@ def on_after_update(mapper, connection, target):
 
 def on_after_delete(mapper, connection, target):
     from nefertari.elasticsearch import ES
-    request = getattr(target, '_request', None)
     model_cls = target.__class__
     es = ES(model_cls.__name__)
     obj_id = getattr(target, model_cls.pk_field())
-    es.delete(obj_id, request=request)
+    es.delete(obj_id)
     target.expire_parents()
-    es.index_relations(target, request=request)
+    es.index_relations(target)
 
 
 def on_bulk_update(update_context):
-    request = getattr(
-        update_context.query, '_request', None)
     model_cls = update_context.mapper.entity
     if not getattr(model_cls, '_index_enabled', False):
         return
@@ -87,13 +81,13 @@ def on_bulk_update(update_context):
 
     from nefertari.elasticsearch import ES
     es = ES(source=model_cls.__name__)
-    es.index(objects, request=request)
+    es.index(objects)
 
     # Reindex relationships
-    es.bulk_index_relations(objects, request=request, nested_only=True)
+    es.bulk_index_relations(objects, nested_only=True)
 
 
-def on_bulk_delete(model_cls, objects, request):
+def on_bulk_delete(model_cls, objects):
     if not getattr(model_cls, '_index_enabled', False):
         return
 
@@ -102,10 +96,10 @@ def on_bulk_delete(model_cls, objects, request):
 
     from nefertari.elasticsearch import ES
     es = ES(source=model_cls.__name__)
-    es.delete(ids, request=request)
+    es.delete(ids)
     model_cls.bulk_expire_parents(objects)
     # Reindex relationships
-    es.bulk_index_relations(objects, request=request)
+    es.bulk_index_relations(objects)
 
 
 def setup_es_signals_for(source_cls):
