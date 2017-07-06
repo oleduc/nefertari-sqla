@@ -645,8 +645,7 @@ class BaseMixin(object):
         return self
 
     @classmethod
-    def _delete_many(cls, items, request=None,
-                     synchronize_session=False):
+    def _delete_many(cls, items, synchronize_session=False):
         """ Delete :items: queryset or objects list.
 
         When queryset passed, Query.delete() is used to delete it but
@@ -666,12 +665,11 @@ class BaseMixin(object):
             del_items = del_queryset.all()
             del_count = del_queryset.delete(
                 synchronize_session=synchronize_session)
-            on_bulk_delete(cls, del_items, request)
+            on_bulk_delete(cls, del_items)
             return del_count
         items_count = len(items)
         session = cls.session_factory()
         for item in items:
-            item._request = request
             session.delete(item)
         session.flush()
         return items_count
@@ -684,7 +682,7 @@ class BaseMixin(object):
             item.expire_parents(session)
 
     @classmethod
-    def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
+    def _update_many(cls, items, params, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
 
         When queryset passed, Query.update() is used to update it but
@@ -696,7 +694,6 @@ class BaseMixin(object):
         """
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
-            upd_queryset._request = request
             items_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
             updated_items = upd_queryset.all() if return_documents is True else []
@@ -718,7 +715,6 @@ class BaseMixin(object):
                 if pks:
                     primary_key = getattr(cls, pk_field)
                     upd_queryset = cls.session_factory().query(cls).filter(primary_key.in_(pks))
-                    upd_queryset._request = request
                     items_count = upd_queryset.update(params, synchronize_session=synchronize_session)
                     updated_items = upd_queryset.all() if return_documents is True else []
                 else:
@@ -728,7 +724,7 @@ class BaseMixin(object):
                 items_count = len(items)
 
                 for item in items:
-                    item.update(params, request)
+                    item.update(params)
 
                 updated_items = items if return_documents is True else []
 
@@ -882,8 +878,13 @@ class BaseMixin(object):
         kwargs["type"] = DocumentView
         return self.to_dict(**kwargs)
 
-    def update_iterables(self, params, attr, save=True, request=None):
-        self._request = request
+    def refresh(self):
+        session = object_session(self) or self.session_factory()
+
+        if self not in session:
+            session.add(self)
+
+    def update_iterables(self, params, attr, save=True):
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
         is_dict = isinstance(columns.get(attr), DictField)
@@ -921,7 +922,7 @@ class BaseMixin(object):
 
             setattr(self, attr, final_value)
             if save:
-                self.save(request)
+                self.save()
 
         def update_list(update_params):
             final_value = getattr(self, attr) or []
@@ -966,7 +967,7 @@ class BaseMixin(object):
             object_session(self).flush()
 
             if save:
-                self.save(request)
+                self.save()
 
         if is_dict:
             update_dict(params)
@@ -1153,9 +1154,8 @@ class BaseDocument(BaseObject, BaseMixin):
     """
     __abstract__ = True
 
-    def save(self, request=None):
+    def save(self):
         session = object_session(self)
-        self._request = request
         session = session or self.session_factory()
         try:
             session.add(self)
@@ -1171,8 +1171,7 @@ class BaseDocument(BaseObject, BaseMixin):
                     self.__class__.__name__),
                 extra={'data': e})
 
-    def update(self, params, request=None):
-        self._request = request
+    def update(self, params):
         try:
             self._update(params)
             session = object_session(self)
@@ -1188,8 +1187,7 @@ class BaseDocument(BaseObject, BaseMixin):
                     self.__class__.__name__),
                 extra={'data': e})
 
-    def delete(self, request=None):
-        self._request = request
+    def delete(self):
         session = object_session(self)
         session.delete(self)
 
@@ -1215,3 +1213,12 @@ class ESBaseDocument(six.with_metaclass(ESMetaclass, BaseDocument)):
     should be abstract as well (__abstract__ = True).
     """
     __abstract__ = True
+
+
+def reload_document(_type, _id):
+    document_cls = get_document_cls(_type)
+    try:
+        document = document_cls.get_item(**{document_cls.pk_field(): _id})
+        return document.to_indexable_dict()
+    except NoResultFound:
+        return None
