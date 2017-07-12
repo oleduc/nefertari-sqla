@@ -55,9 +55,12 @@ class BaseField(Column):
         * If `args` are provided, that means column proxy is being created.
           In this case Type does not need to be created.
         """
+
+        self.es_index = kwargs.get('es_index', True)
+
         if not hasattr(self, '_kwargs_backup'):
             self._kwargs_backup = kwargs.copy()
-
+        self._custom_analyzer = None
         type_args, type_kw, cleaned_kw = self.process_type_args(kwargs)
         col_kw = self.process_column_args(cleaned_kw)
         # Column proxy is created by declarative extension
@@ -95,6 +98,8 @@ class BaseField(Column):
             * type_kw: dict of type-specific kwargs
             * cleaned_kw: input kwargs cleaned from type-specific args
         """
+        self._custom_analyzer = kwargs.get('custom_analyzer', None)
+
         type_kw = dict()
         type_args = ()
         cleaned_kw = kwargs.copy()
@@ -360,7 +365,8 @@ class BaseSchemaItemField(BaseField):
             if 'type_' not in kwargs:
                 self._init_kwargs = self._kwargs_backup.copy()
         column_args = (schema_item,)
-        return Column.__init__(self, *column_args, **column_kw)
+        self.es_index = kwargs.get('es_index', True)
+        Column.__init__(self, *column_args, **column_kw)
 
     def _generate_schema_item(self, cleaned_kw):
         """ Generate SchemaItem using `_schema_class` and kwargs
@@ -488,6 +494,7 @@ def Relationship(**kwargs):
     simple many-to-one references.
     """
     _init_kwargs = kwargs.copy()
+
     backref_pre = 'backref_'
     backref_pre_len = len(backref_pre)
     if 'help_text' in kwargs:
@@ -531,4 +538,6 @@ def Relationship(**kwargs):
 
     rel_field = relationship(rel_document, **rel_kw)
     rel_field._init_kwargs = _init_kwargs
+    rel_field.es_index = _init_kwargs.get('es_index', True)
+
     return rel_field

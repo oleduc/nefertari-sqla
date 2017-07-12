@@ -1,18 +1,9 @@
 from sqlalchemy.orm.properties import RelationshipProperty
-from sqlalchemy.orm import class_mapper
+from sqlalchemy.orm import class_mapper, properties
 
 relationship_fields = (
     RelationshipProperty,
 )
-
-
-class SingletonMeta(type):
-    _instances = {}
-
-    def __call__(cls, *args, **kwargs):
-        if cls not in cls._instances:
-            cls._instances[cls] = super(SingletonMeta, cls).__call__(*args, **kwargs)
-        return cls._instances[cls]
 
 
 def is_relationship_field(field, model_cls):
@@ -39,6 +30,16 @@ def get_relationship_cls(field, model_cls):
     field_obj = relationships[field]
     return field_obj.mapper.class_
 
+
+def is_indexable(field):
+    return getattr(field, 'es_index', True)
+
+
+def get_backref_props(cls):
+    iter_props = class_mapper(cls).iterate_properties
+    backref_props = [p for p in iter_props
+                     if isinstance(p, properties.RelationshipProperty)]
+    return backref_props
 
 
 class FieldsQuerySet(list):

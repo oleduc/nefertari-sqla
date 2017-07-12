@@ -2,20 +2,18 @@ import copy
 import logging
 
 import six
-from sqlalchemy import text
-from sqlalchemy.dialects import postgresql
+from sqlalchemy import text, inspect
 from sqlalchemy.orm import (
     class_mapper, object_session, properties, attributes)
 from sqlalchemy.orm.collections import InstrumentedList
 from sqlalchemy.exc import (
     InvalidRequestError, IntegrityError, DataError)
-from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
+from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound, DetachedInstanceError
 from sqlalchemy.orm.query import Query
 from sqlalchemy.orm.properties import RelationshipProperty
 from pyramid_sqlalchemy import Session, BaseObject
 from sqlalchemy_utils.types.json import JSONType
 from sqlalchemy.orm.dynamic import AppenderQuery
-from sqlalchemy.inspection import inspect
 
 from nefertari.json_httpexceptions import (
     JHTTPBadRequest, JHTTPNotFound, JHTTPConflict)
@@ -24,15 +22,17 @@ from nefertari.utils import (
     drop_reserved_params)
 
 from nefertari.utils.data import DocumentView
+from nefertari.utils import ThreadLocalSingleton
 from .signals import ESMetaclass, on_bulk_delete
 from .fields import ListField, DictField, IntegerField
+from .utils import is_indexable, get_backref_props
 from . import types
-from nefertari_sqla.utils import SingletonMeta
+
 
 log = logging.getLogger(__name__)
 
 
-class SessionHolder(metaclass=SingletonMeta):
+class SessionHolder(ThreadLocalSingleton):
 
     def __init__(self):
         # use pyramid_sqlaclhemy default session factory
@@ -168,14 +168,20 @@ class BaseMixin(object):
         mapper = class_mapper(cls)
         columns = {c.name: c for c in mapper.columns}
         relationships = {r.key: r for r in mapper.relationships}
-
         for name, column in columns.items():
             column_type = column.type
             if isinstance(column_type, types.ChoiceArray):
                 column_type = column_type.impl.item_type
             column_type = type(column_type)
+
             if column_type not in types_map:
                 continue
+
+            if getattr(column, '_custom_analyzer', False):
+                properties[name] = {'analyzer': column._custom_analyzer}
+                properties[name].update(types_map[column_type])
+                continue
+
             properties[name] = types_map[column_type]
 
             if hasattr(column, "_es_multi_field") and getattr(column, "_es_multi_field"):
@@ -188,6 +194,7 @@ class BaseMixin(object):
                     properties[name]["fields"][multi_field_name].update(types_map[column_type])
 
         for name, column in relationships.items():
+
             if name in cls._nested_relationships and not depth_reached:
                 column_type = {'type': 'nested', 'include_in_parent': True}
                 nested_substitutions.append(name)
@@ -203,7 +210,6 @@ class BaseMixin(object):
             properties[name] = column_type
 
         properties['_pk'] = {'type': 'string'}
-
         return mapping, nested_substitutions
 
     @classmethod
@@ -639,8 +645,7 @@ class BaseMixin(object):
         return self
 
     @classmethod
-    def _delete_many(cls, items, request=None,
-                     synchronize_session=False):
+    def _delete_many(cls, items, synchronize_session=False):
         """ Delete :items: queryset or objects list.
 
         When queryset passed, Query.delete() is used to delete it but
@@ -660,16 +665,15 @@ class BaseMixin(object):
             del_items = del_queryset.all()
             del_count = del_queryset.delete(
                 synchronize_session=synchronize_session)
-            on_bulk_delete(cls, del_items, request)
+            on_bulk_delete(cls, del_items)
             return del_count
         items_count = len(items)
         session = cls.session_factory()
         for item in items:
-            item._request = request
             session.delete(item)
         session.flush()
         return items_count
-    
+
     @classmethod
     def bulk_expire_parents(cls, items, session=None):
         if session is None:
@@ -678,7 +682,7 @@ class BaseMixin(object):
             item.expire_parents(session)
 
     @classmethod
-    def _update_many(cls, items, params, request=None, synchronize_session='fetch', return_documents=True):
+    def _update_many(cls, items, params, synchronize_session='fetch', return_documents=True):
         """ Update :items: queryset or objects list.
 
         When queryset passed, Query.update() is used to update it but
@@ -690,7 +694,6 @@ class BaseMixin(object):
         """
         if isinstance(items, Query):
             upd_queryset = cls._clean_queryset(items)
-            upd_queryset._request = request
             items_count = upd_queryset.update(
                 params, synchronize_session=synchronize_session)
             updated_items = upd_queryset.all() if return_documents is True else []
@@ -721,7 +724,7 @@ class BaseMixin(object):
                 items_count = len(items)
 
                 for item in items:
-                    item.update(params, request)
+                    item.update(params)
 
                 updated_items = items if return_documents is True else []
 
@@ -741,8 +744,12 @@ class BaseMixin(object):
 
     def __repr__(self):
         pk_field = self.pk_field()
+        try:
+            pk = getattr(self, pk_field)
+        except DetachedInstanceError:
+            pk = '`detached`'
         parts = [
-            '{}={}'.format(pk_field, getattr(self, pk_field)),
+            '{}={}'.format(pk_field, pk),
         ]
         return '<{}: {}>'.format(self.__class__.__name__, ', '.join(parts))
 
@@ -790,6 +797,39 @@ class BaseMixin(object):
 
         return value
 
+    @classmethod
+    def get_non_indexable_fields(cls):
+        backref_props = get_backref_props(cls)
+
+        def filter_func(f):
+            return not is_indexable(f)
+
+        fields = [column.name for column in filter(filter_func, class_mapper(cls).columns)]
+        fields.extend([prop.key for prop in filter(filter_func, backref_props)])
+
+        return fields
+
+    def get_reverse_non_indexable_fields(self):
+        fields = []
+        related_items = [(getattr(self, item.key), item) for item in get_backref_props(self.__class__)]
+
+        for related_item, relation in related_items:
+            if isinstance(related_item, list):
+                for item in related_item:
+                    if relation.back_populates in item.get_non_indexable_fields():
+                        fields.append(relation.key)
+                        break
+            else:
+                if isinstance(related_item, AppenderQuery):
+                    related_item = related_item.column_descriptions[0]['type']
+
+                if not related_item:
+                    continue
+
+                if relation.back_populates in related_item.get_non_indexable_fields():
+                    fields.append(relation.key)
+        return fields
+
     def to_dict(self, **kwargs):
         _depth = kwargs.get('_depth')
         _obj_type = kwargs.get('type', dictset)
@@ -800,7 +840,8 @@ class BaseMixin(object):
         depth_reached = _depth is not None and _depth <= 0
 
         _data = _obj_type()
-        native_fields = self.__class__.native_fields()
+
+        native_fields = set(self.__class__.native_fields()) - set(self.get_non_indexable_fields())
 
         for field in native_fields:
             value = getattr(self, field, None)
@@ -819,6 +860,10 @@ class BaseMixin(object):
                 nest_objects=(not indexable and is_nested and not depth_reached)
             )
 
+        if hasattr(self, '_injected_fields'):
+            for field in self._injected_fields:
+                _data[field] = getattr(self, field, None)
+
         _data['_type'] = self._type
         _data['_pk'] = str(getattr(self, self.pk_field()))
 
@@ -833,8 +878,13 @@ class BaseMixin(object):
         kwargs["type"] = DocumentView
         return self.to_dict(**kwargs)
 
-    def update_iterables(self, params, attr, save=True, request=None):
-        self._request = request
+    def refresh(self):
+        session = object_session(self) or self.session_factory()
+
+        if self not in session:
+            session.add(self)
+
+    def update_iterables(self, params, attr, save=True):
         mapper = class_mapper(self.__class__)
         columns = {c.name: c for c in mapper.columns}
         is_dict = isinstance(columns.get(attr), DictField)
@@ -872,7 +922,7 @@ class BaseMixin(object):
 
             setattr(self, attr, final_value)
             if save:
-                self.save(request)
+                self.save()
 
         def update_list(update_params):
             final_value = getattr(self, attr) or []
@@ -917,7 +967,7 @@ class BaseMixin(object):
             object_session(self).flush()
 
             if save:
-                self.save(request)
+                self.save()
 
         if is_dict:
             update_dict(params)
@@ -935,14 +985,16 @@ class BaseMixin(object):
             results only contain data for models on which current model
             and field are nested.
         """
-        iter_props = class_mapper(self.__class__).iterate_properties
-        backref_props = [p for p in iter_props
-                         if isinstance(p, properties.RelationshipProperty)]
+        backref_props = get_backref_props(self.__class__)
+        non_indexable_fields = self.get_reverse_non_indexable_fields()
 
         for prop in backref_props:
             value = getattr(self, prop.key)
-            # Do not index empty values
 
+            if prop.key in non_indexable_fields:
+                continue
+
+            # Do not index empty values
             if not value:
                 continue
 
@@ -963,12 +1015,15 @@ class BaseMixin(object):
             yield (model_cls, value)
 
     def get_parent_documents(self, nested_only=False):
-        iter_props = class_mapper(self.__class__).iterate_properties
-        backref_props = [p for p in iter_props
-                         if isinstance(p, properties.RelationshipProperty)]
+        backref_props = get_backref_props(self.__class__)
+
+        non_indexable_fields = [field for field in self.get_non_indexable_fields()]
 
         for prop in backref_props:
             value = getattr(self, prop.key)
+
+            if prop.key in non_indexable_fields:
+                continue
 
             # Backref don't have _init_kwargs
             if hasattr(prop, "_init_kwargs"):
@@ -1015,6 +1070,81 @@ class BaseMixin(object):
         state = attributes.instance_state(self)
         return not state.persistent
 
+    @classmethod
+    def get_readonly_item(cls, pkey_value=None, **params):
+        columns = cls.get_columns()
+
+        if pkey_value:
+            return cls._wrap_read_only(
+                cls.session_factory().query(cls).filter_by(**{cls.pk_field(): pkey_value}).values(*columns)
+            )
+        if params:
+            return cls._wrap_read_only(
+                cls.session_factory().query(cls).filter_by(**params).values(*columns)
+            )
+        raise TypeError('Missing one of required arguments: pkey_value or **params')
+
+    @classmethod
+    def get_columns(cls):
+        inspected = inspect(cls)
+        return [c_attr.key for c_attr in inspected.mapper.columns]
+
+    @classmethod
+    def _wrap_read_only(cls, gen):
+        read_only_cls = cls._get_readonly_cls()
+        single_value = next(gen, None)
+
+        if single_value:
+            return read_only_cls(item=single_value)
+        return None
+
+    @classmethod
+    def get_readonly_collection(cls, **params):
+        if params:
+            query = cls.session_factory().query(cls).filter_by(**params)
+        else:
+            statement = text('SELECT * FROM public.%s' % cls.__tablename__)
+            query = cls.session_factory().query(cls).from_statement(statement)
+        return cls._wrap_read_only_collection(query.values(*cls.get_columns()))
+
+    # proxies generator
+    @classmethod
+    def _wrap_read_only_collection(cls, gen):
+        read_only_cls = cls._get_readonly_cls()
+        for item in gen:
+            yield read_only_cls(**{column: item[index] for index, column in enumerate(cls.get_columns())})
+
+    @classmethod
+    def _get_readonly_cls(cls):
+        def _build(item=None, **kwargs):
+            return ReadOnlyObject(cls.pk_field(), cls.pk_field_type(), item=item, **kwargs)
+        return _build
+
+    @classmethod
+    def to_readonly_instance(cls, instance):
+        readonly_cls = cls._get_readonly_cls()
+        return readonly_cls(**instance.to_dict())
+
+
+class ReadOnlyObject:
+    def __init__(self, pk_field, pk_field_type, item=None, **kwargs):
+        self._pk_field = pk_field
+        self._pk_field_type = pk_field_type
+
+        if item:
+            keys = item.keys()
+            for index, value in enumerate(item):
+                self.__dict__[keys[index]] = value
+
+        else:
+            self.__dict__.update(kwargs)
+
+    def pk_field(self):
+        return self._pk_field
+
+    def pk_field_type(self):
+        return self._pk_field_type
+
 
 class BaseDocument(BaseObject, BaseMixin):
     """ Base class for SQLA models.
@@ -1024,9 +1154,8 @@ class BaseDocument(BaseObject, BaseMixin):
     """
     __abstract__ = True
 
-    def save(self, request=None):
+    def save(self):
         session = object_session(self)
-        self._request = request
         session = session or self.session_factory()
         try:
             session.add(self)
@@ -1042,8 +1171,7 @@ class BaseDocument(BaseObject, BaseMixin):
                     self.__class__.__name__),
                 extra={'data': e})
 
-    def update(self, params, request=None):
-        self._request = request
+    def update(self, params):
         try:
             self._update(params)
             session = object_session(self)
@@ -1059,8 +1187,7 @@ class BaseDocument(BaseObject, BaseMixin):
                     self.__class__.__name__),
                 extra={'data': e})
 
-    def delete(self, request=None):
-        self._request = request
+    def delete(self):
         session = object_session(self)
         session.delete(self)
 
@@ -1086,3 +1213,12 @@ class ESBaseDocument(six.with_metaclass(ESMetaclass, BaseDocument)):
     should be abstract as well (__abstract__ = True).
     """
     __abstract__ = True
+
+
+def reload_document(_type, _id):
+    document_cls = get_document_cls(_type)
+    try:
+        document = document_cls.get_item(**{document_cls.pk_field(): _id})
+        return document.to_indexable_dict()
+    except NoResultFound:
+        return None

@@ -1,0 +1,32 @@
+language: python
+
+python:
+  - 3.4
+
+env:
+    global:
+      - PYTHONHASHSEED=0 #NEEDED?
+
+build:
+
+    ci:
+      - apt-get update
+      - apt-get install libpq-dev python3-dev
+      - if [ "$BRANCH" == "develop" ]; then pip install -r requirements.dev; fi
+      - if [ "$BRANCH" != "develop" ]; then pip install -r requirements.txt; fi
+      - pip install -U pytest
+      - mkdir -p shippable/testresults
+      - mkdir -p shippable/codecoverage
+      - pytest --cov-report xml:shippable/codecoverage/cov.xml --cov-report term --cov=nefertari_sqla nefertari_sqla --junit-xml=shippable/testresults/results.xml
+
+integrations:
+    notifications:
+        - integrationName: email
+          type: email
+          recipients:
+            #- cerri_be_devs@cerri.com
+            - blaurent@cerri.com
+          on_start: false
+          on_success: false
+          on_failure: true
+          on_pull_request: true
