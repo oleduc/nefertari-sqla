@@ -701,10 +701,18 @@ class BaseMixin(object):
             is_batchable = True
 
             # If params doesn't contain iterable values, we can batch update it
-            for key, value in params.items():
-                if isinstance(value, (list, dict)) or isinstance(value, BaseDocument):
+            for key, value in params.copy().items():
+                if isinstance(value, (list, dict, BaseDocument)):
                     is_batchable = False
                     break
+                # None can be assigned to a ForeignKey column
+                elif value is None:
+                    attribute = getattr(cls, key, None)
+                    if attribute and isinstance(attribute.property, RelationshipProperty):
+                        # Assigning the value to the foreignkey column rather than to the backref property
+                        [column] = attribute.property.local_columns
+                        del params[key]
+                        params[column] = value
 
             if is_batchable:
                 pk_field = cls.pk_field()
