@@ -78,17 +78,19 @@ def is_object_document(document):
 
 def process_lists(_dict):
     for k in _dict:
-        new_k, _, _t = k.partition('__')
-        if _t == 'in' or _t == 'all':
-            _dict[k] = _dict.aslist(k)
+        if hasattr(k, 'partition'):
+            new_k, _, _t = k.partition('__')
+            if _t == 'in' or _t == 'all':
+                _dict[k] = _dict.aslist(k)
     return _dict
 
 
 def process_bools(_dict):
     for k in _dict:
-        new_k, _, _t = k.partition('__')
-        if _t == 'bool':
-            _dict[new_k] = _dict.pop_bool_param(k)
+        if hasattr(k, 'partition'):
+            new_k, _, _t = k.partition('__')
+            if _t == 'bool':
+                _dict[new_k] = _dict.pop_bool_param(k)
     return _dict
 
 
@@ -712,7 +714,7 @@ class BaseMixin(object):
                         # Assigning the value to the foreignkey column rather than to the backref property
                         [column] = attribute.property.local_columns
                         del params[key]
-                        params[column] = value
+                        params[column.key] = value
 
             if is_batchable:
                 pk_field = cls.pk_field()
